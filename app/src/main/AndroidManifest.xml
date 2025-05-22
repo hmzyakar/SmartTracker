@@ -84,8 +84,8 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.SmartTracker">
-            <intent-filter>
+            android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+        <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
