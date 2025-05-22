@@ -1,0 +1,54 @@
+<resources>
+    <string name="app_name">SmartTracker</string>
+    <string name="start_tracking">START TRACKING</string>
+    <string name="stop_tracking">STOP TRACKING</string>
+    <string name="status_initializing">Status: Initializing...</string>
+    <string name="connection_disconnected">Connection: Disconnected</string>
+    <string name="bluetooth_le">Bluetooth LE</string>
+    <string name="wifi_udp">Wi-Fi UDP</string>
+    <string name="gsm_sms">GSM SMS</string>
+    <string name="primary_range">Primary (5-10m)</string>
+    <string name="secondary_range">Secondary (50m)</string>
+    <string name="backup_range">Backup (Unlimited)</string>
+    <string name="instructions_title">Instructions</string>
+    <string name="instructions_text">1. Place the ESP32 tracker device with your valuable item\n2. Press START TRACKING to begin monitoring\n3. You will receive alerts when the item moves away\n4. Check notifications for location information</string>
+    <string name="app_version">Smart Tracker v1.0</string>
+    <string name="permissions_notice">Ensure all permissions are granted for optimal performance</string>
+
+    <!-- Notification strings -->
+    <string name="notification_channel_name">SmartTracker Alerts</string>
+    <string name="notification_channel_desc">Channel for tracker notifications</string>
+    <string name="ble_alert_title">BLE Alert</string>
+    <string name="wifi_alert_title">WiFi Alert</string>
+    <string name="sms_alert_title">SMS Alert</string>
+
+    <!-- Status messages -->
+    <string name="status_permissions_granted">Permissions granted</string>
+    <string name="status_ready_to_start">Ready to start tracking</string>
+    <string name="status_starting_services">Starting tracking services...</string>
+    <string name="status_stopping_services">Stopping tracking services...</string>
+    <string name="status_scanning_ble">Scanning for ESP32_TRACKER...</string>
+    <string name="status_ble_connected">BLE Connected</string>
+    <string name="status_ble_disconnected">BLE Disconnected</string>
+    <string name="status_udp_active">UDP listener active</string>
+    <string name="status_wifi_connected">WiFi Connected</string>
+    <string name="status_bluetooth_not_supported">Bluetooth not supported</string>
+    <string name="status_enable_bluetooth">Please enable Bluetooth</string>
+
+    <!-- Toast messages -->
+    <string name="toast_tracking_started">Tracking started</string>
+    <string name="toast_tracking_stopped">Tracking stopped</string>
+    <string name="toast_permissions_granted">All permissions granted</string>
+    <string name="toast_permissions_denied">Some permissions were denied. App may not work properly.</string>
+
+    <!-- Error messages -->
+    <string name="error_bluetooth_not_available">Bluetooth not available</string>
+    <string name="error_ble_scanner_not_available">BLE scanner not available</string>
+    <string name="error_bluetooth_permission_denied">Bluetooth scan permission not granted</string>
+    <string name="error_ble_scan_failed">BLE scan failed</string>
+    <string name="error_service_discovery_failed">Service discovery failed</string>
+    <string name="error_characteristic_not_found">BLE characteristic not found</string>
+    <string name="error_service_not_found">BLE service not found</string>
+    <string name="error_udp_listener">UDP listener error</string>
+    <string name="error_sms_receiver">Failed to register SMS receiver</string>
+</resources>
