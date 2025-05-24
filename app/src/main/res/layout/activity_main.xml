@@ -16,7 +16,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🔍 Smart Tracker"
+            android:text="Smart Tracker"
             android:textSize="26sp"
             android:textStyle="bold"
             android:textColor="@color/blue_700"
@@ -25,13 +25,13 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Real-time ESP32 tracking system"
+            android:text="Production ESP32 tracking system"
             android:textSize="14sp"
             android:textColor="@color/gray_700"
             android:layout_marginBottom="16dp"
             android:gravity="center" />
 
-        <!-- Connection Status Card - NEW IMPROVED -->
+        <!-- Connection Status Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -48,7 +48,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📡 Connection Status"
+                    android:text="Connection Status"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -59,7 +59,7 @@
                     android:id="@+id/connectionStatusCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="🔴 Disconnected"
+                    android:text="Searching for ESP32..."
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/red_500"
@@ -70,7 +70,7 @@
                     android:id="@+id/bleStatusText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="🔵 BLE: Disconnected"
+                    android:text="BLE: Searching..."
                     android:textSize="14sp"
                     android:textColor="@color/red_500"
                     android:layout_marginBottom="4dp" />
@@ -79,18 +79,18 @@
                     android:id="@+id/wifiStatusText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="📶 WiFi: Ready"
+                    android:text="WiFi: Not connected"
                     android:textSize="14sp"
-                    android:textColor="@color/gray_500"
+                    android:textColor="@color/red_500"
                     android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:id="@+id/gsmStatusText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="📱 GSM: Ready"
+                    android:text="GSM: No network"
                     android:textSize="14sp"
-                    android:textColor="@color/gray_500"
+                    android:textColor="@color/red_500"
                     android:layout_marginBottom="8dp" />
 
                 <!-- Quick Retry Buttons -->
@@ -102,10 +102,10 @@
                     <Button
                         android:id="@+id/retryBleButton"
                         android:layout_width="0dp"
-                        android:layout_height="40dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="🔵 BLE"
-                        android:textSize="11sp"
+                        android:text="RETRY BLE"
+                        android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/blue_600"
@@ -114,10 +114,10 @@
                     <Button
                         android:id="@+id/retryWifiButton"
                         android:layout_width="0dp"
-                        android:layout_height="40dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="📶 WiFi"
-                        android:textSize="11sp"
+                        android:text="TEST WiFi"
+                        android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/dark_green"
@@ -127,10 +127,10 @@
                     <Button
                         android:id="@+id/retryGsmButton"
                         android:layout_width="0dp"
-                        android:layout_height="40dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="📱 GSM"
-                        android:textSize="11sp"
+                        android:text="TEST GSM"
+                        android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/red_600"
@@ -142,7 +142,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Control Buttons - MOVED UP -->
+        <!-- Control Buttons -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -154,8 +154,8 @@
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
-                android:text="🚀 START"
-                android:textSize="16sp"
+                android:text="START TRACKING"
+                android:textSize="14sp"
                 android:textStyle="bold"
                 android:textColor="@color/white"
                 android:background="@color/green_500"
@@ -167,8 +167,8 @@
                 android:layout_width="0dp"
                 android:layout_height="56dp"
                 android:layout_weight="1"
-                android:text="⏹️ STOP"
-                android:textSize="16sp"
+                android:text="STOP TRACKING"
+                android:textSize="14sp"
                 android:textStyle="bold"
                 android:textColor="@color/white"
                 android:background="@color/red_500"
@@ -177,7 +177,7 @@
 
         </LinearLayout>
 
-        <!-- Alarm Control Card - SIMPLIFIED -->
+        <!-- Alarm Control Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -194,7 +194,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🚨 Alarm Control"
+                    android:text="Alarm System"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -212,7 +212,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🔔 ENABLED (ready)"
+                        android:text="ENABLED (monitoring)"
                         android:textSize="16sp"
                         android:textColor="@color/green_500"
                         android:textStyle="bold" />
@@ -230,8 +230,8 @@
                 <Button
                     android:id="@+id/silenceButton"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
-                    android:text="🔇 SILENCE ALARM"
+                    android:layout_height="48dp"
+                    android:text="SILENCE ALARM"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="@color/white"
@@ -242,7 +242,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- RSSI Calibration Card - SIMPLIFIED -->
+        <!-- Distance Calibration Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -259,7 +259,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📡 Distance Calibration"
+                    android:text="Distance Calibration"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -269,7 +269,7 @@
                     android:id="@+id/rssiTestText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="📡 RSSI Threshold: -70 dBm"
+                    android:text="Alert Distance: -70 dBm"
                     android:textSize="14sp"
                     android:textColor="@color/gray_700"
                     android:textStyle="bold"
@@ -283,10 +283,10 @@
                     <Button
                         android:id="@+id/rssiTestButton"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="📡 RSSI TEST"
-                        android:textSize="12sp"
+                        android:text="START DISTANCE TEST"
+                        android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/blue_500"
@@ -296,10 +296,10 @@
                     <Button
                         android:id="@+id/setThresholdButton"
                         android:layout_width="0dp"
-                        android:layout_height="44dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="✅ SET"
-                        android:textSize="12sp"
+                        android:text="SET CURRENT"
+                        android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/green_500"
@@ -312,7 +312,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Status Card - COMPACT -->
+        <!-- Status Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -329,7 +329,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📊 System Status"
+                    android:text="System Status"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -356,7 +356,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Enhanced Debug Console - BIGGER -->
+        <!-- Debug Console - DÜZELTME: ScrollView geri eklendi -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -380,7 +380,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🐛 Debug Console"
+                        android:text="Debug Console"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="@color/blue_700" />
@@ -401,35 +401,33 @@
 
                 </LinearLayout>
 
-                <!-- Larger Scrollable Debug Console -->
+                <!-- DÜZELTME: ScrollView ile TextView -->
                 <ScrollView
                     android:id="@+id/debugScrollView"
                     android:layout_width="match_parent"
                     android:layout_height="400dp"
                     android:background="#FF1E1E1E"
-                    android:padding="8dp"
                     android:scrollbars="vertical"
-                    android:fadeScrollbars="false"
-                    android:scrollbarStyle="outsideOverlay">
+                    android:fadeScrollbars="false">
 
                     <TextView
                         android:id="@+id/debugLogText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text=""
-                        android:textSize="12sp"
+                        android:textSize="11sp"
                         android:textColor="#FF00FF00"
                         android:fontFamily="monospace"
-                        android:textIsSelectable="true"
-                        android:lineSpacingExtra="2dp"
-                        android:paddingBottom="8dp" />
+                        android:padding="8dp"
+                        android:gravity="top"
+                        android:textIsSelectable="false" />
 
                 </ScrollView>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="💡 Auto-scroll enabled | Shows last 50 events | Reduced spam"
+                    android:text="LATEST MESSAGES AT TOP | Last 25 messages | Real data only"
                     android:textSize="10sp"
                     android:textColor="@color/gray_500"
                     android:layout_marginTop="4dp"
@@ -440,7 +438,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Quick Info Card -->
+        <!-- Production Info Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -457,7 +455,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📋 Quick Guide"
+                    android:text="Usage Guide"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -466,7 +464,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="1️⃣ Press START to begin tracking\n2️⃣ Use RSSI TEST to calibrate distance\n3️⃣ Enable/disable alarm with switch\n4️⃣ Monitor connections above\n5️⃣ Check debug console for details"
+                    android:text="1. Press START TRACKING to begin\n2. Use DISTANCE TEST to calibrate alert distance\n3. Enable/disable alarm with switch above\n4. Monitor all connections in status cards\n5. Check debug console for technical details\n6. System uses real sensor data only"
                     android:textSize="13sp"
                     android:textColor="@color/gray_700"
                     android:lineSpacingExtra="2dp" />
@@ -479,7 +477,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Smart Tracker v1.1 - Improved UI"
+            android:text="Smart Tracker v2.0 - Production Build"
             android:textSize="12sp"
             android:textColor="@color/gray_500"
             android:layout_marginBottom="4dp" />
@@ -487,7 +485,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="⚠️ Real sensor data - No spam logs"
+            android:text="Real hardware • Live GPS • Actual SMS alerts"
             android:textSize="11sp"
             android:textColor="@color/gray_500"
             android:gravity="center"
