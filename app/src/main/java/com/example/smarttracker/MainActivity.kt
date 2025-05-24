@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Button
+import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -28,10 +29,10 @@ import androidx.core.content.ContextCompat
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : Activity() {
-    private val CHANNEL_ID = "smarttracker"
     private var bleGatt: BluetoothGatt? = null
     private var bleScanner: BluetoothLeScanner? = null
     private var isScanning = false
@@ -39,11 +40,14 @@ class MainActivity : Activity() {
 
     // UI Components
     private var statusText: TextView? = null
-    private var connectionText: TextView? = null
+    private var connectionStatusCard: TextView? = null
+    private var bleStatusText: TextView? = null
+    private var wifiStatusText: TextView? = null
+    private var gsmStatusText: TextView? = null
     private var alarmStatusText: TextView? = null
     private var gpsStatusText: TextView? = null
-    private var gsmStatusText: TextView? = null
     private var debugLogText: TextView? = null
+    private var debugScrollView: ScrollView? = null
     private var rssiTestText: TextView? = null
     private var startButton: Button? = null
     private var stopButton: Button? = null
@@ -52,8 +56,11 @@ class MainActivity : Activity() {
     private var clearLogButton: Button? = null
     private var rssiTestButton: Button? = null
     private var setThresholdButton: Button? = null
+    private var retryBleButton: Button? = null
+    private var retryWifiButton: Button? = null
+    private var retryGsmButton: Button? = null
 
-    // Alarm Control
+    // State variables
     private var isAlarmEnabled = true
     private var isAlarmActive = false
     private var prefs: SharedPreferences? = null
@@ -61,8 +68,13 @@ class MainActivity : Activity() {
     // RSSI Test & Calibration
     private var isRssiTestActive = false
     private var currentRssi = 0
-    private var rssiThreshold = -70  // Default threshold
+    private var rssiThreshold = -70
     private val rssiUpdateHandler = Handler(Looper.getMainLooper())
+
+    // Debug logging with scroll management
+    private val debugMessages = mutableListOf<String>()
+    private val maxDebugMessages = 50 // Reduced for better performance
+    private var shouldAutoScroll = true
 
     private val handler = Handler(Looper.getMainLooper())
     private val SCAN_TIMEOUT = 30000L
@@ -74,12 +86,11 @@ class MainActivity : Activity() {
         private const val REQUEST_PERMISSIONS = 1001
         private const val REQUEST_ENABLE_BT = 1002
         private const val UDP_PORT = 5000
-
-        // Preferences keys
+        private const val CHANNEL_ID = "smarttracker"
         private const val PREF_ALARM_ENABLED = "alarm_enabled"
+        private const val PREF_RSSI_THRESHOLD = "rssi_threshold"
     }
 
-    // Gerekli izinler
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
             Manifest.permission.BLUETOOTH_SCAN,
@@ -105,45 +116,52 @@ class MainActivity : Activity() {
         initializeViews()
         createNotificationChannel()
 
-        // SMS Receiver callback'ini ayarla
         SmsReceiver.callback = { title, message ->
             runOnUiThread {
                 handleTrackerAlert(title, message)
             }
         }
 
-        // İzinleri kontrol et
         if (checkPermissions()) {
             initializeBluetooth()
         } else {
             requestPermissions()
         }
 
-        Log.d(TAG, "MainActivity created with alarm control")
+        addDebugLog("📱 SmartTracker initialized")
+        updateConnectionStatus()
     }
 
     private fun initializePreferences() {
         prefs = getSharedPreferences("smarttracker_prefs", Context.MODE_PRIVATE)
         isAlarmEnabled = prefs?.getBoolean(PREF_ALARM_ENABLED, true) ?: true
-        rssiThreshold = prefs?.getInt("rssi_threshold", -70) ?: -70
-        addDebugLog("📊 Loaded RSSI threshold: $rssiThreshold dBm")
+        rssiThreshold = prefs?.getInt(PREF_RSSI_THRESHOLD, -70) ?: -70
+        addDebugLog("⚙️ Settings loaded - Alarm: $isAlarmEnabled, RSSI: $rssiThreshold dBm")
     }
 
-    private fun saveAlarmPreference() {
-        prefs?.edit()?.putBoolean(PREF_ALARM_ENABLED, isAlarmEnabled)?.apply()
+    private fun savePreferences() {
+        prefs?.edit()?.apply {
+            putBoolean(PREF_ALARM_ENABLED, isAlarmEnabled)
+            putInt(PREF_RSSI_THRESHOLD, rssiThreshold)
+            apply()
+        }
     }
 
     private fun initializeViews() {
-        statusText = findViewById<TextView>(R.id.statusText)
-        connectionText = findViewById<TextView>(R.id.connectionText)
-        alarmStatusText = findViewById<TextView>(R.id.alarmStatusText)
-        gpsStatusText = findViewById<TextView>(R.id.gpsStatusText)
-        gsmStatusText = findViewById<TextView>(R.id.gsmStatusText)
-        debugLogText = findViewById<TextView>(R.id.debugLogText)
-        rssiTestText = findViewById<TextView>(R.id.rssiTestText)
+        statusText = findViewById(R.id.statusText)
+        connectionStatusCard = findViewById(R.id.connectionStatusCard)
+        bleStatusText = findViewById(R.id.bleStatusText)
+        wifiStatusText = findViewById(R.id.wifiStatusText)
+        gsmStatusText = findViewById(R.id.gsmStatusText)
+        alarmStatusText = findViewById(R.id.alarmStatusText)
+        gpsStatusText = findViewById(R.id.gpsStatusText)
+        debugLogText = findViewById(R.id.debugLogText)
+        debugScrollView = findViewById(R.id.debugScrollView)
+        rssiTestText = findViewById(R.id.rssiTestText)
 
         startButton = findViewById<Button>(R.id.startButton)?.apply {
             setOnClickListener { startTracking() }
+            isEnabled = false
         }
 
         stopButton = findViewById<Button>(R.id.stopButton)?.apply {
@@ -177,122 +195,42 @@ class MainActivity : Activity() {
             isEnabled = false
         }
 
+        retryBleButton = findViewById<Button>(R.id.retryBleButton)?.apply {
+            setOnClickListener { retryConnection("bluetooth") }
+        }
+
+        retryWifiButton = findViewById<Button>(R.id.retryWifiButton)?.apply {
+            setOnClickListener { retryConnection("wifi") }
+        }
+
+        retryGsmButton = findViewById<Button>(R.id.retryGsmButton)?.apply {
+            setOnClickListener { retryConnection("gsm") }
+        }
+
         updateAlarmUI()
         updateRssiDisplay()
-        addDebugLog("📱 App initialized successfully")
-    }
-
-    private fun toggleAlarm(enabled: Boolean) {
-        isAlarmEnabled = enabled
-        saveAlarmPreference()
-
-        // ESP32'ye komut gönder
-        if (enabled) {
-            sendBLECommand("ALARM_ON")
-            sendUDPCommand("ALARM_ON")
-            addDebugLog("🚨 Alarm enabled - commands sent to ESP32")
-        } else {
-            sendBLECommand("ALARM_OFF")
-            sendUDPCommand("ALARM_OFF")
-            isAlarmActive = false
-            addDebugLog("🔕 Alarm disabled - commands sent to ESP32")
-        }
-
-        updateAlarmUI()
-
-        val statusMessage = if (enabled) "enabled" else "disabled"
-        updateStatus("Alarm $statusMessage")
-
-        Toast.makeText(this,
-            "Alarm $statusMessage",
-            Toast.LENGTH_SHORT).show()
-
-        Log.d(TAG, "Alarm toggled: $enabled")
-    }
-
-    private fun silenceAlarm() {
-        if (isAlarmActive) {
-            sendBLECommand("SILENCE_ALARM")
-            sendUDPCommand("SILENCE_ALARM")
-
-            isAlarmActive = false
-            updateAlarmUI()
-            updateStatus("Alarm silenced")
-            addDebugLog("🔇 Alarm silenced by user")
-
-            Toast.makeText(this, "Alarm silenced", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Alarm silenced by user")
-        }
-    }
-
-    private fun updateAlarmUI() {
-        runOnUiThread {
-            alarmSwitch?.isChecked = isAlarmEnabled
-
-            val statusText = when {
-                !isAlarmEnabled -> "🔕 Alarm: DISABLED"
-                isAlarmActive -> "🚨 Alarm: ACTIVE (ringing)"
-                else -> "🔔 Alarm: ENABLED (ready)"
-            }
-
-            alarmStatusText?.text = statusText
-
-            val colorRes = when {
-                !isAlarmEnabled -> android.R.color.darker_gray
-                isAlarmActive -> android.R.color.holo_red_dark
-                else -> android.R.color.holo_green_dark
-            }
-
-            alarmStatusText?.setTextColor(ContextCompat.getColor(this, colorRes))
-            silenceButton?.isEnabled = isAlarmActive && isAlarmEnabled
-        }
-    }
-
-    private fun handleTrackerAlert(title: String, message: String) {
-        Log.d(TAG, "Tracker alert received: $title - $message")
-        addDebugLog("🚨 Alert: $title - $message")
-
-        // Alarm durumunu güncelle
-        if (isAlarmEnabled && (message.contains("ALERT") || message.contains("uzaklaşıyor") || message.contains("disconnected"))) {
-            isAlarmActive = true
-            updateAlarmUI()
-            addDebugLog("🔥 CRITICAL: Alarm activated!")
-
-            // Kritik bildirim göster
-            showCriticalNotification(title, message)
-
-            // Telefonu titret
-            vibratePhone()
-
-            // Ekranı aç (kullanıcı fark etsin)
-            wakeUpScreen()
-        }
-
-        // Normal bildirim göster
-        showNotification(title, message)
-        updateStatus("Alert received: $message")
+        updateConnectionStatus()
+        addDebugLog("✅ UI initialized")
     }
 
     private fun addDebugLog(message: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         val logMessage = "[$timestamp] $message"
 
+        debugMessages.add(logMessage)
+
+        if (debugMessages.size > maxDebugMessages) {
+            debugMessages.removeAt(0)
+        }
+
         runOnUiThread {
-            val currentLog = debugLogText?.text?.toString() ?: ""
-            val lines = currentLog.split("\n").toMutableList()
+            debugLogText?.text = debugMessages.joinToString("\n")
 
-            // Maksimum 20 satır tut
-            if (lines.size >= 20) {
-                lines.removeAt(0)
-            }
-
-            lines.add(logMessage)
-            debugLogText?.text = lines.joinToString("\n")
-
-            // ScrollView'i en alta kaydır
-            handler.post {
-                val scrollView = findViewById<android.widget.ScrollView>(R.id.debugScrollView)
-                scrollView?.fullScroll(android.view.View.FOCUS_DOWN)
+            // Auto-scroll to bottom only if enabled
+            if (shouldAutoScroll) {
+                debugScrollView?.post {
+                    debugScrollView?.fullScroll(ScrollView.FOCUS_DOWN)
+                }
             }
         }
 
@@ -300,27 +238,109 @@ class MainActivity : Activity() {
     }
 
     private fun clearDebugLog() {
+        debugMessages.clear()
         debugLogText?.text = ""
         addDebugLog("🗑️ Debug log cleared")
     }
 
-    private fun updateGpsStatus(status: String) {
-        runOnUiThread {
-            gpsStatusText?.text = "GPS: $status"
+    private fun toggleAlarm(enabled: Boolean) {
+        isAlarmEnabled = enabled
+        savePreferences()
+
+        if (enabled) {
+            sendBLECommand("ALARM_ON")
+            sendUDPCommand("ALARM_ON")
+            addDebugLog("🚨 Alarm enabled")
+        } else {
+            sendBLECommand("ALARM_OFF")
+            sendUDPCommand("ALARM_OFF")
+            isAlarmActive = false
+            addDebugLog("🔕 Alarm disabled")
         }
-        addDebugLog("📍 GPS: $status")
+
+        updateAlarmUI()
+        updateStatus("Alarm ${if (enabled) "enabled" else "disabled"}")
+        Toast.makeText(this, "Alarm ${if (enabled) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show()
     }
 
-    private fun updateGsmStatus(status: String) {
-        runOnUiThread {
-            gsmStatusText?.text = "GSM: $status"
+    private fun silenceAlarm() {
+        if (isAlarmActive) {
+            sendBLECommand("SILENCE_ALARM")
+            sendUDPCommand("SILENCE_ALARM")
+            isAlarmActive = false
+            updateAlarmUI()
+            updateStatus("Alarm silenced")
+            addDebugLog("🔇 Alarm silenced by user")
+            Toast.makeText(this, "Alarm silenced", Toast.LENGTH_SHORT).show()
         }
-        addDebugLog("📱 GSM: $status")
+    }
+
+    private fun updateAlarmUI() {
+        runOnUiThread {
+            alarmSwitch?.isChecked = isAlarmEnabled
+
+            val statusText: String
+            val colorRes: Int
+
+            when {
+                !isAlarmEnabled -> {
+                    statusText = "🔕 DISABLED"
+                    colorRes = android.R.color.darker_gray
+                }
+                isAlarmActive -> {
+                    statusText = "🚨 ACTIVE (ringing)"
+                    colorRes = android.R.color.holo_red_dark
+                }
+                else -> {
+                    statusText = "🔔 ENABLED (ready)"
+                    colorRes = android.R.color.holo_green_dark
+                }
+            }
+
+            alarmStatusText?.text = statusText
+            alarmStatusText?.setTextColor(ContextCompat.getColor(this, colorRes))
+            silenceButton?.isEnabled = isAlarmActive && isAlarmEnabled
+        }
+    }
+
+    private fun updateConnectionStatus() {
+        runOnUiThread {
+            // BLE Status
+            bleStatusText?.apply {
+                if (bleConnected) {
+                    text = "🔵 BLE: Connected"
+                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.holo_green_dark))
+                } else {
+                    text = "🔵 BLE: Disconnected"
+                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark))
+                }
+            }
+
+            // WiFi Status (simulated - would need actual implementation)
+            wifiStatusText?.apply {
+                text = "📶 WiFi: Ready"
+                setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+            }
+
+            // GSM Status (simulated - would need actual implementation)
+            gsmStatusText?.apply {
+                text = "📱 GSM: Ready"
+                setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+            }
+
+            // Overall connection status
+            val overallStatus = when {
+                bleConnected -> "🟢 Connected via BLE"
+                else -> "🔴 Disconnected"
+            }
+            connectionStatusCard?.text = overallStatus
+        }
     }
 
     private fun toggleRssiTest() {
         if (!bleConnected) {
             Toast.makeText(this, "ESP32 not connected!", Toast.LENGTH_SHORT).show()
+            addDebugLog("❌ RSSI test failed - not connected")
             return
         }
 
@@ -336,12 +356,12 @@ class MainActivity : Activity() {
     private fun startRssiTest() {
         isRssiTestActive = true
         rssiTestButton?.text = "⏹️ STOP RSSI TEST"
-        setThresholdButton?.isEnabled = true
+        setThresholdButton?.isEnabled = false
 
-        addDebugLog("📡 RSSI test started - current threshold: $rssiThreshold dBm")
-        Toast.makeText(this, "RSSI Test Started! Walk to your desired distance and press SET THRESHOLD", Toast.LENGTH_LONG).show()
+        addDebugLog("📡 RSSI test started - Walk to desired distance")
+        Toast.makeText(this, "RSSI Test Started! Walk to desired distance", Toast.LENGTH_LONG).show()
 
-        // RSSI'yi gerçek zamanlı güncelle
+        sendBLECommand("START_RSSI_TEST")
         updateRssiPeriodically()
     }
 
@@ -349,84 +369,113 @@ class MainActivity : Activity() {
         isRssiTestActive = false
         rssiTestButton?.text = "📡 START RSSI TEST"
         setThresholdButton?.isEnabled = false
+        rssiUpdateHandler.removeCallbacksAndMessages(null)
 
         addDebugLog("📡 RSSI test stopped")
         Toast.makeText(this, "RSSI Test Stopped", Toast.LENGTH_SHORT).show()
 
-        // Periyodik güncellemeleri durdur
-        rssiUpdateHandler.removeCallbacksAndMessages(null)
+        if (bleConnected) {
+            sendBLECommand("STOP_RSSI_TEST")
+        }
     }
 
     private fun updateRssiPeriodically() {
         if (!isRssiTestActive || !bleConnected) return
 
-        // ESP32'den RSSI iste
-        sendBLECommand("GET_RSSI")
+        bleGatt?.let { gatt ->
+            try {
+                gatt.readRemoteRssi()
+            } catch (e: SecurityException) {
+                if (isRssiTestActive) {
+                    addDebugLog("❌ Security error reading RSSI")
+                }
+                else {}
+            } catch (e: Exception) {
+                if (isRssiTestActive) {
+                    addDebugLog("❌ Error reading RSSI: ${e.message}")
+                }
+                else {}
+            }
+        }
 
-        // 1 saniye sonra tekrar çağır
-        rssiUpdateHandler.postDelayed({
-            updateRssiPeriodically()
-        }, 1000)
+        if (bleConnected && isRssiTestActive) {
+            rssiUpdateHandler.postDelayed({
+                updateRssiPeriodically()
+            }, 2000) // Increased interval to reduce spam
+        }
     }
 
     private fun setCurrentRssiAsThreshold() {
         if (currentRssi != 0) {
             rssiThreshold = currentRssi
-
-            // Threshold'u kaydet
-            prefs?.edit()?.putInt("rssi_threshold", rssiThreshold)?.apply()
-
-            // ESP32'ye yeni threshold'u gönder
+            savePreferences()
             sendBLECommand("SET_THRESHOLD;$rssiThreshold")
-
             updateRssiDisplay()
             addDebugLog("✅ RSSI threshold set to: $rssiThreshold dBm")
-
-            Toast.makeText(this,
-                "✅ Distance calibrated! Alarm threshold set to $rssiThreshold dBm",
-                Toast.LENGTH_LONG).show()
-
-            // Test'i durdur
+            Toast.makeText(this, "✅ Threshold set to: $rssiThreshold dBm", Toast.LENGTH_LONG).show()
             stopRssiTest()
         } else {
             Toast.makeText(this, "No RSSI data available", Toast.LENGTH_SHORT).show()
+            addDebugLog("❌ Cannot set threshold - no RSSI data")
         }
     }
 
     private fun updateRssiDisplay() {
         runOnUiThread {
-            val rssiText = if (isRssiTestActive && currentRssi != 0) {
-                "📡 Current: ${currentRssi} dBm | Threshold: ${rssiThreshold} dBm"
+            val rssiText: String
+            val color: Int
+
+            if (isRssiTestActive && currentRssi != 0) {
+                rssiText = "📡 Current: ${currentRssi} dBm | Threshold: ${rssiThreshold} dBm"
+                setThresholdButton?.isEnabled = true
             } else {
-                "📡 RSSI Threshold: ${rssiThreshold} dBm (tap test to calibrate)"
+                rssiText = "📡 RSSI Threshold: ${rssiThreshold} dBm"
             }
 
             rssiTestText?.text = rssiText
 
-            // RSSI değerine göre renk
-            val color = when {
-                !isRssiTestActive -> android.R.color.darker_gray
-                currentRssi > rssiThreshold -> android.R.color.holo_green_dark  // Güvenli alan
-                currentRssi > rssiThreshold - 10 -> android.R.color.holo_orange_dark  // Uyarı alanı
-                else -> android.R.color.holo_red_dark  // Alarm alanı
+            when {
+                !isRssiTestActive -> color = android.R.color.darker_gray
+                currentRssi > rssiThreshold -> color = android.R.color.holo_green_dark
+                currentRssi > rssiThreshold - 10 -> color = android.R.color.holo_orange_dark
+                else -> color = android.R.color.holo_red_dark
             }
 
             rssiTestText?.setTextColor(ContextCompat.getColor(this, color))
         }
     }
 
-    private fun wakeUpScreen() {
-        try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            val wakeLock = powerManager.newWakeLock(
-                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                        android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                "SmartTracker:WakeLock"
-            )
-            wakeLock.acquire(3000) // 3 saniye ekranı açık tut
-            wakeLock.release()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error waking up screen: ${e.message}")
+    private fun retryConnection(connectionType: String) {
+        addDebugLog("🔄 Manual retry: $connectionType")
+
+        when (connectionType.lowercase()) {
+            "bluetooth", "ble" -> {
+                if (bleConnected) {
+                    Toast.makeText(this, "BLE Already Connected", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                if (isScanning) {
+                    stopBLEScan()
+                }
+
+                handler.postDelayed({
+                    startBLEScan()
+                }, 1000)
+
+                Toast.makeText(this, "🔵 Retrying BLE...", Toast.LENGTH_SHORT).show()
+            }
+
+            "wifi" -> {
+                sendUDPCommand("PING_TEST")
+                Toast.makeText(this, "📶 Testing WiFi UDP...", Toast.LENGTH_SHORT).show()
+            }
+
+            "gsm" -> {
+                sendBLECommand("GET_GSM_STATUS")
+                sendUDPCommand("GET_GSM_STATUS")
+                Toast.makeText(this, "📱 Testing GSM...", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -437,17 +486,25 @@ class MainActivity : Activity() {
 
             if (characteristic != null) {
                 try {
-                    characteristic.value = command.toByteArray()
-                    val success = gatt.writeCharacteristic(characteristic)
-                    Log.d(TAG, "BLE command sent: $command, success: $success")
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        characteristic.value = command.toByteArray()
+                        val success = gatt.writeCharacteristic(characteristic)
+                        if (success) {
+                            addDebugLog("📤 BLE: $command ✅")
+                        } else {
+                            addDebugLog("📤 BLE: $command ❌")
+                        }
+                    } else {
+                        addDebugLog("❌ BLE permission denied")
+                    }
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "Security exception sending BLE command: ${e.message}")
+                    addDebugLog("❌ BLE security error: ${e.message}")
                 }
             } else {
-                Log.w(TAG, "BLE characteristic not found for command: $command")
+                addDebugLog("❌ BLE characteristic not found")
             }
         } ?: run {
-            Log.w(TAG, "BLE GATT not connected, cannot send command: $command")
+            addDebugLog("❌ BLE not connected")
         }
     }
 
@@ -455,18 +512,35 @@ class MainActivity : Activity() {
         Thread {
             try {
                 val socket = DatagramSocket()
-                val address = InetAddress.getByName("192.168.4.1") // ESP32 AP IP
+                val address = InetAddress.getByName("192.168.4.1")
                 val buffer = command.toByteArray()
                 val packet = DatagramPacket(buffer, buffer.size, address, UDP_PORT)
 
                 socket.send(packet)
                 socket.close()
 
-                Log.d(TAG, "UDP command sent: $command")
+                addDebugLog("📤 UDP: $command ✅")
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending UDP command: ${e.message}")
+                addDebugLog("❌ UDP error: ${e.message}")
             }
         }.start()
+    }
+
+    private fun handleTrackerAlert(title: String, message: String) {
+        addDebugLog("🚨 ALERT: $title - $message")
+
+        if (isAlarmEnabled && (message.contains("ALERT") ||
+                    message.contains("uzaklaşıyor") ||
+                    message.contains("disconnected") ||
+                    message.contains("moved away"))) {
+            isAlarmActive = true
+            updateAlarmUI()
+            showCriticalNotification(title, message)
+            vibratePhone()
+        }
+
+        showNotification(title, message)
+        updateStatus("Alert: $message")
     }
 
     private fun checkPermissions(): Boolean {
@@ -489,10 +563,12 @@ class MainActivity : Activity() {
 
         if (requestCode == REQUEST_PERMISSIONS) {
             if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                addDebugLog("✅ All permissions granted")
                 Toast.makeText(this, "All permissions granted", Toast.LENGTH_SHORT).show()
                 initializeBluetooth()
             } else {
-                Toast.makeText(this, "Permissions denied. App may not work properly.", Toast.LENGTH_LONG).show()
+                addDebugLog("❌ Some permissions denied")
+                Toast.makeText(this, "Permissions denied", Toast.LENGTH_LONG).show()
                 updateStatus("Permissions denied")
             }
         }
@@ -503,30 +579,44 @@ class MainActivity : Activity() {
         val bluetoothAdapter = bluetoothManager.adapter
 
         if (bluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth not supported on this device", Toast.LENGTH_LONG).show()
+            addDebugLog("❌ Bluetooth not supported")
+            Toast.makeText(this, "Bluetooth not supported", Toast.LENGTH_LONG).show()
             updateStatus("Bluetooth not supported")
             return
         }
 
         if (!bluetoothAdapter.isEnabled) {
+            addDebugLog("🔵 Requesting Bluetooth enable...")
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             try {
-                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                    startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                } else {
+                    addDebugLog("❌ Bluetooth permission denied")
+                    Toast.makeText(this, "Bluetooth permission needed", Toast.LENGTH_LONG).show()
+                }
             } catch (e: SecurityException) {
+                addDebugLog("❌ Bluetooth permission error")
                 Toast.makeText(this, "Bluetooth permission needed", Toast.LENGTH_LONG).show()
             }
             return
         }
 
-        bleScanner = bluetoothAdapter.bluetoothLeScanner
-        if (bleScanner == null) {
-            Toast.makeText(this, "BLE scanner not available", Toast.LENGTH_LONG).show()
-            updateStatus("BLE scanner not available")
-            return
-        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
+            bleScanner = bluetoothAdapter.bluetoothLeScanner
+            if (bleScanner == null) {
+                addDebugLog("❌ BLE scanner not available")
+                updateStatus("BLE scanner not available")
+                return
+            }
 
-        updateStatus("Ready to start tracking")
-        startButton?.isEnabled = true
+            addDebugLog("✅ Bluetooth initialized")
+            updateStatus("Ready to start tracking")
+            startButton?.isEnabled = true
+        } else {
+            addDebugLog("❌ BLE scan permission denied")
+            updateStatus("BLE scan permission needed")
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -534,9 +624,10 @@ class MainActivity : Activity() {
 
         if (requestCode == REQUEST_ENABLE_BT) {
             if (resultCode == RESULT_OK) {
+                addDebugLog("✅ Bluetooth enabled")
                 initializeBluetooth()
             } else {
-                Toast.makeText(this, "Bluetooth is required for tracking", Toast.LENGTH_LONG).show()
+                addDebugLog("❌ Bluetooth enable cancelled")
                 updateStatus("Bluetooth disabled")
             }
         }
@@ -550,57 +641,74 @@ class MainActivity : Activity() {
 
         startButton?.isEnabled = false
         stopButton?.isEnabled = true
-        silenceButton?.isEnabled = false
 
-        addDebugLog("🚀 Starting tracking system...")
+        addDebugLog("🚀 Starting tracking...")
         startBLEScan()
 
-        // Alarm durumunu ESP32'ye bildir
         handler.postDelayed({
-            if (isAlarmEnabled) {
-                sendBLECommand("ALARM_ON")
-                addDebugLog("📤 Sent ALARM_ON to ESP32")
-            } else {
-                sendBLECommand("ALARM_OFF")
-                addDebugLog("📤 Sent ALARM_OFF to ESP32")
+            if (bleConnected) {
+                if (isAlarmEnabled) {
+                    sendBLECommand("ALARM_ON")
+                } else {
+                    sendBLECommand("ALARM_OFF")
+                }
             }
-        }, 2000) // 2 saniye bekle
+        }, 2000)
     }
 
     private fun stopTracking() {
+        addDebugLog("⏹️ Stopping tracking...")
+
+        rssiUpdateHandler.removeCallbacksAndMessages(null)
+        isRssiTestActive = false
+
         stopBLEScan()
+
         bleGatt?.let { gatt ->
             try {
-                // Durdurulmadan önce alarm'ı kapat
                 sendBLECommand("ALARM_OFF")
-                addDebugLog("📤 Sent ALARM_OFF before stopping")
-
-                gatt.disconnect()
-                gatt.close()
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception disconnecting GATT: ${e.message}")
+                handler.postDelayed({
+                    try {
+                        gatt.disconnect()
+                        gatt.close()
+                        addDebugLog("🔌 BLE connection closed")
+                    } catch (e: SecurityException) {
+                        addDebugLog("❌ Error closing BLE: ${e.message}")
+                    }
+                }, 500)
+            } catch (e: Exception) {
+                addDebugLog("❌ Error stopping tracking: ${e.message}")
             }
         }
+
+        bleConnected = false
         bleGatt = null
+        currentRssi = 0
 
         startButton?.isEnabled = true
         stopButton?.isEnabled = false
         silenceButton?.isEnabled = false
+        rssiTestButton?.isEnabled = false
+        setThresholdButton?.isEnabled = false
         isAlarmActive = false
 
         updateAlarmUI()
+        updateRssiDisplay()
+        updateConnectionStatus()
         updateStatus("Tracking stopped")
-        addDebugLog("⏹️ Tracking stopped by user")
+        addDebugLog("✅ Tracking stopped")
     }
 
     private fun startBLEScan() {
         if (!checkPermissions()) {
-            Toast.makeText(this, "Missing permissions for BLE scan", Toast.LENGTH_LONG).show()
+            addDebugLog("❌ Missing BLE permissions")
             return
         }
 
         if (isScanning) {
-            Log.d(TAG, "Already scanning")
+            addDebugLog("⚠️ Already scanning")
+            stopBLEScan()
+            handler.postDelayed({ startBLEScan() }, 1000)
             return
         }
 
@@ -608,52 +716,56 @@ class MainActivity : Activity() {
         val bluetoothAdapter = bluetoothManager.adapter
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            Toast.makeText(this, "Bluetooth not available", Toast.LENGTH_LONG).show()
-            updateStatus("Bluetooth not available")
             addDebugLog("❌ Bluetooth not available")
+            updateStatus("Bluetooth not available")
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+            addDebugLog("❌ BLE scan permission denied")
+            updateStatus("BLE scan permission needed")
             return
         }
 
         bleScanner = bluetoothAdapter.bluetoothLeScanner
         if (bleScanner == null) {
-            Toast.makeText(this, "BLE scanner not available", Toast.LENGTH_LONG).show()
-            updateStatus("BLE scanner not available")
             addDebugLog("❌ BLE scanner not available")
+            updateStatus("BLE scanner not available")
             return
         }
+
+        val scanFilter = android.bluetooth.le.ScanFilter.Builder()
+            .setDeviceName("ESP32_TRACKER")
+            .build()
 
         val scanSettings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
-            .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
-            .setReportDelay(0)
             .build()
 
         try {
-            bleScanner?.startScan(null, scanSettings, scanCallback)
+            bleScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
             isScanning = true
             updateStatus("Scanning for ESP32_TRACKER...")
-            addDebugLog("🔍 BLE scan started")
-            Toast.makeText(this, "Scanning for ESP32_TRACKER...", Toast.LENGTH_LONG).show()
-            Log.d(TAG, "BLE scan started with aggressive settings")
+            addDebugLog("🔍 Scanning for ESP32_TRACKER...")
+            Toast.makeText(this, "Looking for ESP32_TRACKER...", Toast.LENGTH_SHORT).show()
 
             handler.postDelayed({
                 if (isScanning) {
-                    Log.d(TAG, "Scan timeout reached")
                     stopBLEScan()
-                    updateStatus("Scan timeout - ESP32_TRACKER not found")
-                    addDebugLog("⏰ BLE scan timeout")
-                    Toast.makeText(this, "ESP32_TRACKER not found. Check if device is on and nearby.", Toast.LENGTH_LONG).show()
+                    updateStatus("ESP32_TRACKER not found")
+                    addDebugLog("⏰ ESP32_TRACKER not found - timeout")
+                    Toast.makeText(this, "ESP32_TRACKER not found", Toast.LENGTH_LONG).show()
+                    startButton?.isEnabled = true
+                    stopButton?.isEnabled = false
                 }
             }, SCAN_TIMEOUT)
 
         } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception starting scan: ${e.message}")
-            Toast.makeText(this, "Bluetooth scan permission needed", Toast.LENGTH_LONG).show()
-            updateStatus("Permission denied")
             addDebugLog("❌ BLE scan permission denied")
+            updateStatus("Permission denied")
             isScanning = false
+            startButton?.isEnabled = true
         }
     }
 
@@ -661,29 +773,44 @@ class MainActivity : Activity() {
         if (!isScanning) return
 
         try {
-            bleScanner?.stopScan(scanCallback)
-            isScanning = false
-            Log.d(TAG, "BLE scan stopped")
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) {
+                bleScanner?.stopScan(scanCallback)
+                isScanning = false
+                addDebugLog("🔍 BLE scan stopped")
+            } else {
+                addDebugLog("❌ Permission denied for stopping scan")
+            }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception stopping scan: ${e.message}")
+            addDebugLog("❌ Error stopping scan")
         }
     }
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             try {
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    addDebugLog("❌ BLE connect permission denied")
+                    return
+                }
+
                 val deviceName = result.device.name
-                val deviceAddress = result.device.address
                 val rssi = result.rssi
 
-                Log.d(TAG, "Found device: $deviceName (${deviceAddress}) RSSI: $rssi")
-
                 if (deviceName == "ESP32_TRACKER") {
-                    Log.d(TAG, "Found ESP32_TRACKER! RSSI: $rssi, connecting...")
                     updateStatus("Found ESP32_TRACKER! Connecting...")
-                    Toast.makeText(this@MainActivity, "Found ESP32_TRACKER! Connecting...", Toast.LENGTH_LONG).show()
+                    addDebugLog("🎯 ESP32_TRACKER found! RSSI: $rssi dBm")
 
                     stopBLEScan()
+
+                    bleGatt?.let { oldGatt ->
+                        try {
+                            oldGatt.disconnect()
+                            oldGatt.close()
+                            addDebugLog("🔌 Closed previous connection")
+                        } catch (e: Exception) {
+                            addDebugLog("⚠️ Error closing old connection")
+                        }
+                    }
 
                     bleGatt = result.device.connectGatt(
                         this@MainActivity,
@@ -691,86 +818,124 @@ class MainActivity : Activity() {
                         gattCallback,
                         BluetoothDevice.TRANSPORT_LE
                     )
+
+                    Toast.makeText(this@MainActivity, "Connecting...", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: SecurityException) {
-                Log.e(TAG, "Security exception in scan result: ${e.message}")
+                addDebugLog("❌ Security error in scan")
             }
         }
 
         override fun onScanFailed(errorCode: Int) {
             isScanning = false
             val errorMessage = when (errorCode) {
-                SCAN_FAILED_ALREADY_STARTED -> "Scan already started"
-                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "App registration failed"
-                SCAN_FAILED_FEATURE_UNSUPPORTED -> "BLE feature unsupported"
+                SCAN_FAILED_ALREADY_STARTED -> "Already started"
+                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "Registration failed"
+                SCAN_FAILED_FEATURE_UNSUPPORTED -> "Feature unsupported"
                 SCAN_FAILED_INTERNAL_ERROR -> "Internal error"
                 else -> "Unknown error: $errorCode"
             }
 
-            Log.e(TAG, "BLE Scan failed: $errorMessage")
-            updateStatus("BLE scan failed: $errorMessage")
-            Toast.makeText(this@MainActivity, "BLE scan failed: $errorMessage", Toast.LENGTH_LONG).show()
+            addDebugLog("❌ BLE scan failed: $errorMessage")
+            updateStatus("BLE scan failed")
+            startButton?.isEnabled = true
+            stopButton?.isEnabled = false
         }
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
+        override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                currentRssi = rssi
+
+                runOnUiThread {
+                    updateRssiDisplay()
+                    if (isRssiTestActive) {
+                        setThresholdButton?.isEnabled = true
+                        // Only log during RSSI test, but reduce frequency
+                        if (System.currentTimeMillis() % 3000 < 100) { // Only every 3 seconds
+                            addDebugLog("📶 RSSI: $rssi dBm")
+                        }
+                    }
+                }
+
+                if (isRssiTestActive) {
+                    sendBLECommand("ANDROID_RSSI;$rssi")
+                }
+            }
+        }
+
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     bleConnected = true
-                    Log.d(TAG, "Connected to ESP32_TRACKER! Status: $status")
                     runOnUiThread {
                         updateStatus("Connected to ESP32_TRACKER!")
-                        updateConnectionStatus("Connected", true)
-                        addDebugLog("🔵 BLE: Connected to ESP32_TRACKER")
-
-                        // RSSI test butonunu aktif et
+                        updateConnectionStatus()
+                        addDebugLog("🔵 BLE: Connected")
                         rssiTestButton?.isEnabled = true
-
-                        Toast.makeText(this@MainActivity, "Connected to ESP32_TRACKER!", Toast.LENGTH_LONG).show()
-                        showNotification("BLE Connected", "Successfully connected to ESP32_TRACKER")
+                        Toast.makeText(this@MainActivity, "Connected!", Toast.LENGTH_SHORT).show()
+                        showNotification("BLE Connected", "Connected to ESP32_TRACKER")
                     }
 
                     try {
                         Thread.sleep(600)
                         gatt.discoverServices()
+
+                        handler.postDelayed({
+                            if (bleConnected) {
+                                startPeriodicRSSIReading(gatt)
+                            }
+                        }, 2000)
+
                     } catch (e: SecurityException) {
-                        Log.e(TAG, "Security exception discovering services: ${e.message}")
+                        addDebugLog("❌ Error discovering services")
                     }
                 }
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    val wasConnected = bleConnected
                     bleConnected = false
-                    Log.d(TAG, "Disconnected from ESP32_TRACKER. Status: $status")
+                    currentRssi = 0
+                    rssiUpdateHandler.removeCallbacksAndMessages(null)
+
                     runOnUiThread {
                         updateStatus("Disconnected from ESP32_TRACKER")
-                        updateConnectionStatus("Disconnected", false)
-                        addDebugLog("❌ BLE: Disconnected from ESP32_TRACKER")
+                        updateConnectionStatus()
+                        addDebugLog("❌ BLE: Disconnected")
 
-                        // RSSI test'i durdur ve butonu pasif et
                         if (isRssiTestActive) {
                             stopRssiTest()
                         }
                         rssiTestButton?.isEnabled = false
 
-                        Toast.makeText(this@MainActivity, "Disconnected from ESP32_TRACKER", Toast.LENGTH_LONG).show()
-                        startButton?.isEnabled = true
-                        stopButton?.isEnabled = false
+                        Toast.makeText(this@MainActivity, "Disconnected", Toast.LENGTH_SHORT).show()
 
-                        // Bağlantı kesildiğinde alarm durumunu kontrol et
-                        if (isAlarmEnabled) {
+                        if (stopButton?.isEnabled == true) {
+                            addDebugLog("🔄 Auto-reconnection in 3 seconds...")
+                            handler.postDelayed({
+                                if (!bleConnected && stopButton?.isEnabled == true) {
+                                    addDebugLog("🔍 Starting reconnection...")
+                                    startBLEScan()
+                                }
+                            }, 3000)
+                        } else {
+                            startButton?.isEnabled = true
+                            stopButton?.isEnabled = false
+                        }
+
+                        if (wasConnected && isAlarmEnabled) {
                             isAlarmActive = true
                             updateAlarmUI()
-                            handleTrackerAlert("Connection Lost", "ESP32_TRACKER disconnected - possible theft!")
+                            handleTrackerAlert("Connection Lost", "ESP32_TRACKER disconnected!")
                         }
                     }
                 }
 
                 BluetoothProfile.STATE_CONNECTING -> {
-                    Log.d(TAG, "Connecting to ESP32_TRACKER...")
                     runOnUiThread {
                         updateStatus("Connecting...")
-                        addDebugLog("🔄 BLE: Connecting to ESP32_TRACKER...")
+                        addDebugLog("🔄 BLE: Connecting...")
                     }
                 }
             }
@@ -778,56 +943,48 @@ class MainActivity : Activity() {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Services discovered! Status: $status")
-
-                gatt.services.forEach { service ->
-                    Log.d(TAG, "Service UUID: ${service.uuid}")
-                    service.characteristics.forEach { char ->
-                        Log.d(TAG, "  Characteristic UUID: ${char.uuid}")
-                    }
-                }
+                addDebugLog("🔍 Services discovered")
 
                 val service = gatt.getService(UUID.fromString(BLE_SERVICE_UUID))
                 if (service != null) {
-                    Log.d(TAG, "Found target service")
+                    addDebugLog("✅ Target service found")
                     val characteristic = service.getCharacteristic(UUID.fromString(BLE_CHAR_UUID))
                     if (characteristic != null) {
-                        Log.d(TAG, "Found characteristic, enabling notifications")
+                        addDebugLog("✅ Setting up notifications...")
                         runOnUiThread {
                             updateStatus("Setting up notifications...")
                         }
 
                         try {
                             val success = gatt.setCharacteristicNotification(characteristic, true)
-                            Log.d(TAG, "setCharacteristicNotification result: $success")
 
                             val descriptor = characteristic.getDescriptor(
                                 UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
                             )
                             if (descriptor != null) {
                                 descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                                val writeSuccess = gatt.writeDescriptor(descriptor)
-                                Log.d(TAG, "writeDescriptor result: $writeSuccess")
+                                gatt.writeDescriptor(descriptor)
+                                addDebugLog("📝 Descriptor write initiated")
                             } else {
-                                Log.e(TAG, "CCCD descriptor not found")
+                                addDebugLog("❌ CCCD descriptor not found")
                             }
                         } catch (e: SecurityException) {
-                            Log.e(TAG, "Security exception enabling notifications: ${e.message}")
+                            addDebugLog("❌ Security error enabling notifications")
                         }
                     } else {
-                        Log.e(TAG, "Target characteristic not found")
+                        addDebugLog("❌ Target characteristic not found")
                         runOnUiThread {
                             updateStatus("Characteristic not found")
                         }
                     }
                 } else {
-                    Log.e(TAG, "Target service not found")
+                    addDebugLog("❌ Target service not found")
                     runOnUiThread {
                         updateStatus("Service not found")
                     }
                 }
             } else {
-                Log.e(TAG, "Service discovery failed with status: $status")
+                addDebugLog("❌ Service discovery failed")
                 runOnUiThread {
                     updateStatus("Service discovery failed")
                 }
@@ -836,13 +993,12 @@ class MainActivity : Activity() {
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Descriptor write successful - notifications enabled!")
+                addDebugLog("✅ BLE notifications enabled!")
                 runOnUiThread {
                     updateStatus("BLE notifications enabled!")
-                    Toast.makeText(this@MainActivity, "BLE notifications enabled!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Ready to communicate!", Toast.LENGTH_SHORT).show()
                 }
 
-                // Bağlantı kurulduktan sonra alarm durumunu gönder ve status iste
                 handler.postDelayed({
                     if (isAlarmEnabled) {
                         sendBLECommand("ALARM_ON")
@@ -850,7 +1006,6 @@ class MainActivity : Activity() {
                         sendBLECommand("ALARM_OFF")
                     }
 
-                    // ESP32'den mevcut durumu iste
                     handler.postDelayed({
                         sendBLECommand("GET_ALARM_STATUS")
                     }, 500)
@@ -858,7 +1013,7 @@ class MainActivity : Activity() {
                 }, 1000)
 
             } else {
-                Log.e(TAG, "Descriptor write failed with status: $status")
+                addDebugLog("❌ Failed to enable notifications")
                 runOnUiThread {
                     updateStatus("Failed to enable notifications")
                 }
@@ -869,87 +1024,124 @@ class MainActivity : Activity() {
             val data = characteristic.value
             if (data != null) {
                 val message = String(data)
-                Log.d(TAG, "BLE message received: $message")
-                addDebugLog("📩 BLE MSG: $message")
 
                 runOnUiThread {
-                    when {
-                        message.startsWith("ALERT") -> {
-                            handleTrackerAlert("BLE Alert", message)
-                        }
-                        message.startsWith("ALARM_STATUS") -> {
-                            val parts = message.split(";")
-                            if (parts.size > 1) {
-                                val status = parts[1]
-                                val enabled = status == "ENABLED"
-
-                                // ESP32'den gelen durumu app ile senkronize et
-                                if (isAlarmEnabled != enabled) {
-                                    isAlarmEnabled = enabled
-                                    saveAlarmPreference()
-                                    updateAlarmUI()
-                                    addDebugLog("🔄 Alarm synced with ESP32: $status")
-                                }
-
-                                updateStatus("ESP32 Alarm status: $status")
-                                Toast.makeText(this@MainActivity,
-                                    "ESP32 confirmed: Alarm $status",
-                                    Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        message == "ALARM_SILENCED" -> {
-                            isAlarmActive = false
-                            updateAlarmUI()
-                            updateStatus("Alarm silenced by ESP32")
-                            addDebugLog("🔇 ESP32 silenced the alarm")
-                            Toast.makeText(this@MainActivity,
-                                "Alarm silenced remotely",
-                                Toast.LENGTH_SHORT).show()
-                        }
-                        message.startsWith("RECONNECT") -> {
-                            updateStatus("ESP32 reconnected")
-                            addDebugLog("🔄 ESP32 reconnected")
-                            Toast.makeText(this@MainActivity,
-                                "Tracker reconnected",
-                                Toast.LENGTH_SHORT).show()
-                        }
-                        message.startsWith("WIFI_ALERT") -> {
-                            handleTrackerAlert("WiFi Connection Lost", message)
-                        }
-                        message.startsWith("PONG") || message.startsWith("LOCATION") -> {
-                            updateStatus("Location received: $message")
-                            // Location parsing
-                            val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(message)
-                            if (locationMatch != null) {
-                                val lat = locationMatch.groupValues[1]
-                                val lon = locationMatch.groupValues[2]
-                                updateGpsStatus("$lat, $lon")
-                                Toast.makeText(this@MainActivity,
-                                    "Location: $lat, $lon",
-                                    Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        message.startsWith("RSSI") -> {
-                            // RSSI mesajını işle: "RSSI;-65"
-                            val parts = message.split(";")
-                            if (parts.size > 1) {
-                                currentRssi = parts[1].toIntOrNull() ?: 0
-                                updateRssiDisplay()
-                                addDebugLog("📶 RSSI: $currentRssi dBm")
-                            }
-                        }
-                        message.startsWith("THRESHOLD_SET") -> {
-                            addDebugLog("✅ ESP32 confirmed threshold setting")
-                            Toast.makeText(this@MainActivity,
-                                "ESP32 threshold updated",
-                                Toast.LENGTH_SHORT).show()
-                        }
-                        else -> {
-                            updateStatus("Message received: $message")
-                            showNotification("BLE Message", message)
-                        }
-                    }
+                    processESP32Message(message)
                 }
+            }
+        }
+    }
+
+    private fun startPeriodicRSSIReading(gatt: BluetoothGatt) {
+        if (!bleConnected || stopButton?.isEnabled != true) {
+            return
+        }
+
+        try {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                gatt.readRemoteRssi()
+            } else {
+                addDebugLog("❌ BLE connect permission denied for RSSI")
+            }
+        } catch (e: Exception) {
+            // Only log during RSSI test to reduce spam
+            if (isRssiTestActive) {
+                addDebugLog("❌ Error reading RSSI: ${e.message}")
+            }
+        }
+
+        if (bleConnected && stopButton?.isEnabled == true) {
+            handler.postDelayed({
+                startPeriodicRSSIReading(gatt)
+            }, 5000)
+        }
+    }
+
+    private fun processESP32Message(message: String) {
+        // Reduce ESP32 message logging spam - only log important messages
+        val shouldLog = when {
+            message.startsWith("ALERT") -> true
+            message.startsWith("ALARM_STATUS") -> true
+            message == "ALARM_SILENCED" -> true
+            message.startsWith("PONG") -> true
+            message.startsWith("LOCATION") -> true
+            message.startsWith("GSM_STATUS") -> true
+            message.startsWith("RSSI") && !isRssiTestActive -> true // Only log RSSI when not in test mode
+            else -> false
+        }
+
+        if (shouldLog) {
+            addDebugLog("📩 ESP32: $message")
+        }
+
+        when {
+            message.startsWith("ALERT") -> {
+                handleTrackerAlert("BLE Alert", message)
+            }
+            message.startsWith("ALARM_STATUS") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    val status = parts[1]
+                    val enabled = status == "ENABLED"
+
+                    if (isAlarmEnabled != enabled) {
+                        isAlarmEnabled = enabled
+                        savePreferences()
+                        updateAlarmUI()
+                        addDebugLog("🔄 Alarm synced: $status")
+                    }
+
+                    updateStatus("ESP32 Alarm: $status")
+                    Toast.makeText(this, "ESP32: Alarm $status", Toast.LENGTH_SHORT).show()
+                }
+            }
+            message == "ALARM_SILENCED" -> {
+                isAlarmActive = false
+                updateAlarmUI()
+                updateStatus("Alarm silenced by ESP32")
+                addDebugLog("🔇 ESP32 silenced alarm")
+                Toast.makeText(this, "Alarm silenced remotely", Toast.LENGTH_SHORT).show()
+            }
+            message.startsWith("PONG") || message.startsWith("LOCATION") -> {
+                updateStatus("Location received")
+                val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(message)
+                if (locationMatch != null) {
+                    val lat = locationMatch.groupValues[1]
+                    val lon = locationMatch.groupValues[2]
+                    updateGpsStatus("$lat, $lon")
+                    addDebugLog("📍 GPS: $lat, $lon")
+                    Toast.makeText(this, "Location: $lat, $lon", Toast.LENGTH_LONG).show()
+                }
+            }
+            message.startsWith("RSSI") -> {
+                val parts = message.split(";")
+                if (parts.size > 1 && parts[1] != "ERROR") {
+                    try {
+                        currentRssi = parts[1].toInt()
+                        updateRssiDisplay()
+
+                        if (isRssiTestActive && currentRssi != 0) {
+                            setThresholdButton?.isEnabled = true
+                        }
+                    } catch (e: NumberFormatException) {
+                        addDebugLog("❌ Invalid RSSI format")
+                    }
+                } else {
+                    addDebugLog("❌ RSSI error from ESP32")
+                }
+            }
+            message.startsWith("GSM_STATUS") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    val status = parts[1]
+                    updateGsmStatus(status)
+                    addDebugLog("📱 GSM: $status")
+                    Toast.makeText(this, "GSM: $status", Toast.LENGTH_SHORT).show()
+                }
+            }
+            else -> {
+                updateStatus("Message: $message")
+                showNotification("ESP32 Message", message)
             }
         }
     }
@@ -958,20 +1150,18 @@ class MainActivity : Activity() {
         runOnUiThread {
             statusText?.text = "Status: $status"
         }
-        Log.d(TAG, "Status: $status")
     }
 
-    private fun updateConnectionStatus(status: String, isConnected: Boolean) {
+    private fun updateGpsStatus(status: String) {
         runOnUiThread {
-            connectionText?.text = "Connection: $status"
-            connectionText?.setTextColor(
-                ContextCompat.getColor(
-                    this,
-                    if (isConnected) android.R.color.holo_green_dark else android.R.color.holo_red_dark
-                )
-            )
+            gpsStatusText?.text = "GPS: $status"
         }
-        Log.d(TAG, "Connection: $status")
+    }
+
+    private fun updateGsmStatus(status: String) {
+        runOnUiThread {
+            gsmStatusText?.text = "GSM: $status"
+        }
     }
 
     private fun showNotification(title: String, text: String) {
@@ -987,7 +1177,7 @@ class MainActivity : Activity() {
         try {
             notificationManager.notify(System.currentTimeMillis().toInt(), notification)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Notification permission needed: ${e.message}")
+            addDebugLog("❌ Notification permission needed")
         }
     }
 
@@ -997,7 +1187,7 @@ class MainActivity : Activity() {
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("🚨 $title")
             .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(false)
             .setOngoing(true)
@@ -1006,9 +1196,9 @@ class MainActivity : Activity() {
             .build()
 
         try {
-            notificationManager.notify(999, notification) // Fixed ID for critical alerts
+            notificationManager.notify(999, notification)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Critical notification permission needed: ${e.message}")
+            addDebugLog("❌ Critical notification permission needed")
         }
     }
 
@@ -1025,7 +1215,7 @@ class MainActivity : Activity() {
                 vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 500), -1)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error vibrating phone: ${e.message}")
+            addDebugLog("❌ Vibration error: ${e.message}")
         }
     }
 
@@ -1050,26 +1240,23 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            // Durdurulmadan önce ESP32'ye alarm kapatma komutu gönder
             if (bleConnected) {
                 sendBLECommand("ALARM_OFF")
             }
-
             stopBLEScan()
             bleGatt?.close()
-
-            // SMS Receiver callback'ini temizle
             SmsReceiver.callback = null
+            rssiUpdateHandler.removeCallbacksAndMessages(null)
         } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception in onDestroy: ${e.message}")
+            addDebugLog("❌ Error in onDestroy")
         }
     }
 
     override fun onResume() {
         super.onResume()
         updateAlarmUI()
+        updateConnectionStatus()
 
-        // Resume'da ESP32'ye mevcut alarm durumunu bildir
         handler.postDelayed({
             if (bleConnected) {
                 if (isAlarmEnabled) {
@@ -1083,7 +1270,6 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        // Critical notification'ı temizle
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(999)
     }

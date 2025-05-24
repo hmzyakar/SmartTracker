@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
+    android:padding="12dp"
     android:background="@color/gray_200">
 
     <LinearLayout
@@ -16,25 +17,25 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="🔍 Smart Tracker"
-            android:textSize="28sp"
+            android:textSize="26sp"
             android:textStyle="bold"
             android:textColor="@color/blue_700"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="4dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Track your valuable items with ESP32"
-            android:textSize="16sp"
+            android:text="Real-time ESP32 tracking system"
+            android:textSize="14sp"
             android:textColor="@color/gray_700"
-            android:layout_marginBottom="32dp"
+            android:layout_marginBottom="16dp"
             android:gravity="center" />
 
-        <!-- Alarm Control Card -->
+        <!-- Connection Status Card - NEW IMPROVED -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:elevation="4dp"
             android:radius="8dp">
 
@@ -42,31 +43,179 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📡 Connection Status"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/blue_700"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Overall Status -->
+                <TextView
+                    android:id="@+id/connectionStatusCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🔴 Disconnected"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/red_500"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Individual Connection Status -->
+                <TextView
+                    android:id="@+id/bleStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🔵 BLE: Disconnected"
+                    android:textSize="14sp"
+                    android:textColor="@color/red_500"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/wifiStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="📶 WiFi: Ready"
+                    android:textSize="14sp"
+                    android:textColor="@color/gray_500"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/gsmStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="📱 GSM: Ready"
+                    android:textSize="14sp"
+                    android:textColor="@color/gray_500"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- Quick Retry Buttons -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/retryBleButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="🔵 BLE"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@color/blue_600"
+                        android:layout_marginEnd="4dp" />
+
+                    <Button
+                        android:id="@+id/retryWifiButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="📶 WiFi"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@color/dark_green"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp" />
+
+                    <Button
+                        android:id="@+id/retryGsmButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:text="📱 GSM"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@color/red_600"
+                        android:layout_marginStart="4dp" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Control Buttons - MOVED UP -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="16dp">
+
+            <Button
+                android:id="@+id/startButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="🚀 START"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:background="@color/green_500"
+                android:layout_marginEnd="8dp"
+                android:enabled="false" />
+
+            <Button
+                android:id="@+id/stopButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="⏹️ STOP"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:background="@color/red_500"
+                android:layout_marginStart="8dp"
+                android:enabled="false" />
+
+        </LinearLayout>
+
+        <!-- Alarm Control Card - SIMPLIFIED -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:elevation="4dp"
+            android:radius="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="🚨 Alarm Control"
-                    android:textSize="18sp"
+                    android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:layout_marginBottom="12dp">
+                    android:layout_marginBottom="8dp">
 
                     <TextView
+                        android:id="@+id/alarmStatusText"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Enable Alarm"
+                        android:text="🔔 ENABLED (ready)"
                         android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
+                        android:textColor="@color/green_500"
+                        android:textStyle="bold" />
 
                     <Switch
                         android:id="@+id/alarmSwitch"
@@ -74,27 +223,16 @@
                         android:layout_height="wrap_content"
                         android:checked="true"
                         android:minWidth="48dp"
-                        android:minHeight="48dp"
-                        android:padding="8dp" />
+                        android:minHeight="48dp" />
 
                 </LinearLayout>
-
-                <TextView
-                    android:id="@+id/alarmStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="🔔 Alarm: ENABLED (ready)"
-                    android:textSize="16sp"
-                    android:textColor="@color/green_500"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="12dp" />
 
                 <Button
                     android:id="@+id/silenceButton"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="44dp"
                     android:text="🔇 SILENCE ALARM"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="@color/white"
                     android:background="@color/red_500"
@@ -104,11 +242,11 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Status Card - Enhanced -->
+        <!-- RSSI Calibration Card - SIMPLIFIED -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:elevation="4dp"
             android:radius="8dp">
 
@@ -116,88 +254,26 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📊 Status"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:id="@+id/statusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Status: Initializing..."
-                    android:textSize="16sp"
-                    android:textColor="@color/gray_700"
-                    android:layout_marginBottom="8dp" />
-
-                <TextView
-                    android:id="@+id/connectionText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Connection: Disconnected"
-                    android:textSize="16sp"
-                    android:textColor="@color/red_500"
-                    android:layout_marginBottom="8dp" />
-
-                <TextView
-                    android:id="@+id/gpsStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="GPS: Not available"
-                    android:textSize="16sp"
-                    android:textColor="@color/gray_500"
-                    android:layout_marginBottom="8dp" />
-
-                <TextView
-                    android:id="@+id/gsmStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="GSM: Not available"
-                    android:textSize="16sp"
-                    android:textColor="@color/gray_500" />
-
-            </LinearLayout>
-
-        </androidx.cardview.widget.CardView>
-
-        <!-- RSSI Calibration Card -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:elevation="4dp"
-            android:radius="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="📡 Distance Calibration"
-                    android:textSize="18sp"
+                    android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <TextView
                     android:id="@+id/rssiTestText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="📡 RSSI Threshold: -70 dBm (tap test to calibrate)"
-                    android:textSize="16sp"
+                    android:text="📡 RSSI Threshold: -70 dBm"
+                    android:textSize="14sp"
                     android:textColor="@color/gray_700"
                     android:textStyle="bold"
-                    android:layout_marginBottom="12dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -207,10 +283,10 @@
                     <Button
                         android:id="@+id/rssiTestButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="📡 START RSSI TEST"
-                        android:textSize="14sp"
+                        android:text="📡 RSSI TEST"
+                        android:textSize="12sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/blue_500"
@@ -220,10 +296,10 @@
                     <Button
                         android:id="@+id/setThresholdButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="✅ SET THRESHOLD"
-                        android:textSize="14sp"
+                        android:text="✅ SET"
+                        android:textSize="12sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/green_500"
@@ -232,49 +308,15 @@
 
                 </LinearLayout>
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="💡 Put device in bag, start test, walk to desired distance, then set threshold"
-                    android:textSize="12sp"
-                    android:textColor="@color/gray_500"
-                    android:layout_marginTop="8dp"
-                    android:fontStyle="italic" />
-
             </LinearLayout>
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Control Buttons -->
-        <Button
-            android:id="@+id/startButton"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:text="🚀 START TRACKING"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/white"
-            android:background="@color/green_500"
-            android:layout_marginBottom="16dp"
-            android:enabled="false" />
-
-        <Button
-            android:id="@+id/stopButton"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:text="⏹️ STOP TRACKING"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/white"
-            android:background="@color/red_500"
-            android:layout_marginBottom="32dp"
-            android:enabled="false" />
-
-        <!-- Debug Log Card -->
+        <!-- Status Card - COMPACT -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:elevation="4dp"
             android:radius="8dp">
 
@@ -282,65 +324,127 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📊 System Status"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/blue_700"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Status: Initializing..."
+                    android:textSize="14sp"
+                    android:textColor="@color/gray_700"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/gpsStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="GPS: Not available"
+                    android:textSize="14sp"
+                    android:textColor="@color/gray_500" />
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Enhanced Debug Console - BIGGER -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:elevation="4dp"
+            android:radius="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="12dp">
+                    android:layout_marginBottom="8dp">
 
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="🐛 Debug Log"
-                        android:textSize="18sp"
+                        android:text="🐛 Debug Console"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="@color/blue_700" />
 
                     <Button
                         android:id="@+id/clearLogButton"
                         android:layout_width="wrap_content"
-                        android:layout_height="32dp"
+                        android:layout_height="28dp"
                         android:text="CLEAR"
-                        android:textSize="12sp"
+                        android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@color/gray_500"
                         android:minHeight="0dp"
-                        android:minWidth="0dp" />
+                        android:minWidth="0dp"
+                        android:paddingLeft="12dp"
+                        android:paddingRight="12dp" />
 
                 </LinearLayout>
 
+                <!-- Larger Scrollable Debug Console -->
                 <ScrollView
                     android:id="@+id/debugScrollView"
                     android:layout_width="match_parent"
-                    android:layout_height="200dp"
-                    android:background="#FF000000"
-                    android:padding="8dp">
+                    android:layout_height="400dp"
+                    android:background="#FF1E1E1E"
+                    android:padding="8dp"
+                    android:scrollbars="vertical"
+                    android:fadeScrollbars="false"
+                    android:scrollbarStyle="outsideOverlay">
 
                     <TextView
                         android:id="@+id/debugLogText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="[12:00:00] 📱 Debug log initialized..."
+                        android:text=""
                         android:textSize="12sp"
-                        android:textColor="@color/white"
+                        android:textColor="#FF00FF00"
                         android:fontFamily="monospace"
-                        android:textIsSelectable="true" />
+                        android:textIsSelectable="true"
+                        android:lineSpacingExtra="2dp"
+                        android:paddingBottom="8dp" />
 
                 </ScrollView>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="💡 Auto-scroll enabled | Shows last 50 events | Reduced spam"
+                    android:textSize="10sp"
+                    android:textColor="@color/gray_500"
+                    android:layout_marginTop="4dp"
+                    android:fontStyle="italic"
+                    android:gravity="center" />
+
             </LinearLayout>
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Connection Methods Card -->
+        <!-- Quick Info Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="16dp"
             android:elevation="4dp"
             android:radius="8dp">
 
@@ -348,237 +452,24 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="📡 Connection Methods"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="🔵 Bluetooth LE"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Primary (5-10m)"
-                        android:textSize="14sp"
-                        android:textColor="@color/blue_500" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="📶 Wi-Fi UDP"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Secondary (50m)"
-                        android:textSize="14sp"
-                        android:textColor="@color/green_500" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="📱 GSM SMS"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Backup (Unlimited)"
-                        android:textSize="14sp"
-                        android:textColor="@color/red_500" />
-
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </androidx.cardview.widget.CardView>
-
-        <!-- Hardware Info Card -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:elevation="4dp"
-            android:radius="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🔧 Hardware Components"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="🔹 ESP32 DevKit"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Main MCU"
-                        android:textSize="14sp"
-                        android:textColor="@color/blue_500" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="📡 SIM808 Module"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="GSM + GPS"
-                        android:textSize="14sp"
-                        android:textColor="@color/green_500" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="🛰️ NEO-6M GPS"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Primary GPS"
-                        android:textSize="14sp"
-                        android:textColor="@color/blue_500" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="🔊 Buzzer + Button"
-                        android:textSize="16sp"
-                        android:textColor="@color/gray_700" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Alarm System"
-                        android:textSize="14sp"
-                        android:textColor="@color/red_500" />
-
-                </LinearLayout>
-
-            </LinearLayout>
-
-        </androidx.cardview.widget.CardView>
-
-        <!-- Instructions Card -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:elevation="4dp"
-            android:radius="8dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📋 Instructions"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/blue_700"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="1️⃣ Place the ESP32 tracker device with your valuable item\n\n2️⃣ Enable alarm if you want audio alerts\n\n3️⃣ Press START TRACKING to begin monitoring\n\n4️⃣ You will receive alerts when the item moves away\n\n5️⃣ Use SILENCE ALARM button to stop buzzer remotely\n\n6️⃣ Check notifications for location information"
+                    android:text="📋 Quick Guide"
                     android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/blue_700"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1️⃣ Press START to begin tracking\n2️⃣ Use RSSI TEST to calibrate distance\n3️⃣ Enable/disable alarm with switch\n4️⃣ Monitor connections above\n5️⃣ Check debug console for details"
+                    android:textSize="13sp"
                     android:textColor="@color/gray_700"
-                    android:lineSpacingExtra="4dp" />
+                    android:lineSpacingExtra="2dp" />
 
             </LinearLayout>
 
@@ -588,16 +479,16 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Smart Tracker v1.0 - with Debug Console"
-            android:textSize="14sp"
+            android:text="Smart Tracker v1.1 - Improved UI"
+            android:textSize="12sp"
             android:textColor="@color/gray_500"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="4dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="⚠️ Ensure all permissions are granted for optimal performance"
-            android:textSize="12sp"
+            android:text="⚠️ Real sensor data - No spam logs"
+            android:textSize="11sp"
             android:textColor="@color/gray_500"
             android:gravity="center"
             android:layout_marginBottom="16dp" />

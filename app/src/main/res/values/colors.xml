@@ -18,4 +18,11 @@
     <color name="gray_200">#FFEEEEEE</color>
     <color name="gray_500">#FF9E9E9E</color>
     <color name="gray_700">#FF616161</color>
+
+    <color name="blue_600">#1565C0</color>
+    <color name="green_600">#388E3C</color>
+    <color name="red_600">#D32F2F</color>
+
+    <color name="dark_green">#2E7D32</color>
+
 </resources>

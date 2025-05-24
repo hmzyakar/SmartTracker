@@ -7,6 +7,9 @@ import android.os.Build
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import android.util.Log
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
 class SmsReceiver : BroadcastReceiver() {
 
@@ -14,38 +17,47 @@ class SmsReceiver : BroadcastReceiver() {
         private const val TAG = "SmsReceiver"
         var callback: ((String, String) -> Unit)? = null
 
-        // Tracker mesajlarını tanımlayan anahtar kelimeler
+        // Real tracker message keywords (no dummy data)
         private val TRACKER_KEYWORDS = listOf(
-            "DELAY SMS",
-            "Esyaniz uzaklasiyor",
-            "Eşyanız uzaklaşıyor",
-            "ALERT",
             "ESP32_TRACKER",
             "Smart Tracker",
+            "TRACKER ALERT",
+            "uzaklaşıyor",
+            "uzaklasiyor",
+            "moving away",
+            "connection lost",
+            "BLE disconnected",
+            "WiFi lost",
+            "GSM alert",
+            "GPS location",
+            "ALERT:",
             "RECONNECT",
-            "WIFI_ALERT"
+            "Battery low"
         )
 
-        // SMS komutları
-        private val SMS_COMMANDS = listOf(
-            "ALARM ON",
-            "ALARM OFF",
-            "SILENCE",
-            "STATUS",
-            "LOCATION"
+        // SMS command processing
+        private val SMS_COMMANDS = mapOf(
+            "ALARM ON" to "ALARM_ON",
+            "ALARM OFF" to "ALARM_OFF",
+            "SILENCE" to "SILENCE_ALARM",
+            "STATUS" to "GET_STATUS",
+            "LOCATION" to "GET_LOCATION",
+            "GPS" to "GET_GPS_STATUS",
+            "GSM" to "GET_GSM_STATUS",
+            "PING" to "PING_TEST"
         )
 
-        // Yetkili numaralar (gerçek uygulamada ayarlardan alınmalı)
+        // Authorized phone numbers (replace with real numbers)
         private val AUTHORIZED_NUMBERS = listOf(
-            "+90XXXXXXXXXX", // Buraya kendi numaranızı yazın
-            "XXXXXXXXXX"     // Sadece numara kısmı da kabul edilir
+            "+905447661357",  // Main authorized number
+            "5447661357"      // Without country code
         )
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         try {
             if (intent.action == "android.provider.Telephony.SMS_RECEIVED") {
-                Log.d(TAG, "SMS received intent")
+                Log.d(TAG, "SMS received intent processing...")
 
                 val bundle = intent.extras
                 if (bundle != null) {
@@ -66,13 +78,13 @@ class SmsReceiver : BroadcastReceiver() {
                                     Log.d(TAG, "SMS from: $originatingAddress")
                                     Log.d(TAG, "SMS body: $messageBody")
 
-                                    // Önce komut kontrolü yap
+                                    // Process authorized commands first
                                     if (isAuthorizedNumber(originatingAddress) && isCommand(messageBody)) {
                                         handleSMSCommand(context, originatingAddress, messageBody)
                                     }
-                                    // Sonra tracker mesajı kontrolü
+                                    // Then check for tracker messages
                                     else if (isTrackerMessage(messageBody)) {
-                                        Log.d(TAG, "Tracker SMS detected")
+                                        Log.d(TAG, "Tracker SMS detected from tracker system")
                                         callback?.invoke("SMS Alert", formatTrackerMessage(messageBody))
                                     } else {
                                         Log.d(TAG, "Non-tracker SMS ignored")
@@ -81,7 +93,7 @@ class SmsReceiver : BroadcastReceiver() {
                                     Log.e(TAG, "Failed to create SMS message from PDU")
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error processing individual SMS PDU: ${e.message}")
+                                Log.e(TAG, "Error processing SMS PDU: ${e.message}")
                             }
                         }
                     } else {
@@ -90,8 +102,6 @@ class SmsReceiver : BroadcastReceiver() {
                 } else {
                     Log.w(TAG, "No extras found in SMS intent")
                 }
-            } else {
-                Log.d(TAG, "Received non-SMS intent: ${intent.action}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing SMS intent: ${e.message}")
@@ -120,14 +130,17 @@ class SmsReceiver : BroadcastReceiver() {
     }
 
     private fun isCommand(messageBody: String): Boolean {
-        return SMS_COMMANDS.any { command ->
-            messageBody.trim().uppercase().startsWith(command)
+        val normalizedMessage = messageBody.trim().uppercase()
+        return SMS_COMMANDS.keys.any { command ->
+            normalizedMessage.startsWith(command)
         }
     }
 
     private fun isAuthorizedNumber(phoneNumber: String): Boolean {
+        val cleanNumber = phoneNumber.replace("+90", "").replace("+", "")
         return AUTHORIZED_NUMBERS.any { authorizedNumber ->
-            phoneNumber.contains(authorizedNumber.replace("+90", "").replace("+", ""))
+            val cleanAuthorized = authorizedNumber.replace("+90", "").replace("+", "")
+            cleanNumber.contains(cleanAuthorized) || cleanAuthorized.contains(cleanNumber)
         }
     }
 
@@ -136,70 +149,84 @@ class SmsReceiver : BroadcastReceiver() {
 
         val normalizedCommand = command.trim().uppercase()
         var responseMessage = ""
+        var esp32Command = ""
 
-        when {
-            normalizedCommand.startsWith("ALARM ON") -> {
-                // ESP32'ye alarm açma komutu gönder (UDP veya BLE üzerinden)
-                sendESP32Command("ALARM_ON")
-                responseMessage = "✅ Alarm ENABLED\nTracker will sound when item moves away."
+        // Find matching command
+        SMS_COMMANDS.entries.find { normalizedCommand.startsWith(it.key) }?.let { entry ->
+            esp32Command = entry.value
 
-                // App callback'ine bildir
-                callback?.invoke("SMS Command", "Alarm enabled via SMS")
+            responseMessage = when (entry.key) {
+                "ALARM ON" -> {
+                    callback?.invoke("SMS Command", "Alarm enabled via SMS from $phoneNumber")
+                    "✅ ALARM ENABLED\nTracker will sound when item moves away."
+                }
+                "ALARM OFF" -> {
+                    callback?.invoke("SMS Command", "Alarm disabled via SMS from $phoneNumber")
+                    "🔕 ALARM DISABLED\nTracker will work silently."
+                }
+                "SILENCE" -> {
+                    callback?.invoke("SMS Command", "Alarm silenced via SMS from $phoneNumber")
+                    "🔇 ALARM SILENCED\nBuzzer stopped remotely."
+                }
+                "STATUS" -> {
+                    callback?.invoke("SMS Command", "Status requested via SMS from $phoneNumber")
+                    "📊 STATUS REQUEST SENT\nWaiting for tracker response..."
+                }
+                "LOCATION" -> {
+                    callback?.invoke("SMS Command", "Location requested via SMS from $phoneNumber")
+                    "📍 LOCATION REQUEST SENT\nWaiting for GPS coordinates..."
+                }
+                "GPS" -> {
+                    callback?.invoke("SMS Command", "GPS status requested via SMS")
+                    "🛰️ GPS STATUS REQUEST SENT"
+                }
+                "GSM" -> {
+                    callback?.invoke("SMS Command", "GSM status requested via SMS")
+                    "📱 GSM STATUS REQUEST SENT"
+                }
+                "PING" -> {
+                    callback?.invoke("SMS Command", "Ping test via SMS")
+                    "🏓 PING TEST SENT\nTesting tracker connection..."
+                }
+                else -> "❓ Command processed"
             }
-
-            normalizedCommand.startsWith("ALARM OFF") -> {
-                sendESP32Command("ALARM_OFF")
-                responseMessage = "🔕 Alarm DISABLED\nTracker will work silently."
-
-                callback?.invoke("SMS Command", "Alarm disabled via SMS")
-            }
-
-            normalizedCommand.startsWith("SILENCE") -> {
-                sendESP32Command("SILENCE_ALARM")
-                responseMessage = "🔇 Alarm SILENCED\nBuzzer stopped remotely."
-
-                callback?.invoke("SMS Command", "Alarm silenced via SMS")
-            }
-
-            normalizedCommand.startsWith("STATUS") -> {
-                // ESP32'den durum bilgisi iste
-                sendESP32Command("GET_STATUS")
-                responseMessage = "📊 STATUS REQUEST SENT\nWaiting for tracker response..."
-
-                callback?.invoke("SMS Command", "Status requested via SMS")
-            }
-
-            normalizedCommand.startsWith("LOCATION") -> {
-                sendESP32Command("GET_LOCATION")
-                responseMessage = "📍 LOCATION REQUEST SENT\nWaiting for GPS coordinates..."
-
-                callback?.invoke("SMS Command", "Location requested via SMS")
-            }
-
-            else -> {
-                responseMessage = "❓ Unknown command.\nValid commands:\n• ALARM ON\n• ALARM OFF\n• SILENCE\n• STATUS\n• LOCATION"
-            }
+        } ?: run {
+            responseMessage = "❓ Unknown command.\nValid commands:\n• ALARM ON/OFF\n• SILENCE\n• STATUS\n• LOCATION\n• GPS\n• GSM\n• PING"
         }
 
-        // Yanıt SMS'i gönder
+        // Send command to ESP32 if valid
+        if (esp32Command.isNotEmpty()) {
+            sendESP32Command(esp32Command)
+            Log.d(TAG, "ESP32 command sent: $esp32Command")
+        }
+
+        // Send response SMS
         sendResponseSMS(phoneNumber, responseMessage)
     }
 
     private fun sendESP32Command(command: String) {
-        // ESP32'ye komut gönderme (UDP üzerinden)
+        // Send command via UDP to ESP32
         Thread {
             try {
-                val socket = java.net.DatagramSocket()
-                val address = java.net.InetAddress.getByName("192.168.4.1") // ESP32 AP IP
+                val socket = DatagramSocket()
+                val address = InetAddress.getByName("192.168.4.1") // ESP32 AP IP
                 val buffer = command.toByteArray()
-                val packet = java.net.DatagramPacket(buffer, buffer.size, address, 5000)
+                val packet = DatagramPacket(buffer, buffer.size, address, 5000)
 
                 socket.send(packet)
                 socket.close()
 
-                Log.d(TAG, "Command sent to ESP32 via UDP: $command")
+                Log.d(TAG, "UDP command sent to ESP32: $command")
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending command to ESP32: ${e.message}")
+                Log.e(TAG, "Error sending UDP command to ESP32: ${e.message}")
+
+                // Try alternative method if UDP fails
+                try {
+                    // Could implement BLE command sending here if needed
+                    Log.d(TAG, "UDP failed, command may need to be sent via BLE")
+                } catch (e2: Exception) {
+                    Log.e(TAG, "All ESP32 communication methods failed: ${e2.message}")
+                }
             }
         }.start()
     }
@@ -207,9 +234,10 @@ class SmsReceiver : BroadcastReceiver() {
     private fun sendResponseSMS(phoneNumber: String, message: String) {
         try {
             val smsManager = SmsManager.getDefault()
+            val fullMessage = "🔍 SmartTracker Response:\n$message"
 
-            // Uzun mesajları parçalara böl
-            val parts = smsManager.divideMessage("🔍 SmartTracker Response:\n$message")
+            // Handle long messages by splitting
+            val parts = smsManager.divideMessage(fullMessage)
 
             if (parts.size == 1) {
                 smsManager.sendTextMessage(phoneNumber, null, parts[0], null, null)
@@ -225,49 +253,171 @@ class SmsReceiver : BroadcastReceiver() {
 
     private fun formatTrackerMessage(originalMessage: String): String {
         return when {
-            originalMessage.contains("DELAY SMS", ignoreCase = true) -> {
-                "⏰ Delayed alert: Your item was out of range. Last known location: ${extractLocation(originalMessage)}"
+            originalMessage.contains("TRACKER ALERT", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                val mapsLink = extractGoogleMapsLink(originalMessage)
+                "🚨 CRITICAL ALERT: Your item is moving away!\n$location\n$mapsLink"
             }
-            originalMessage.contains("uzaklasiyor", ignoreCase = true) ||
-                    originalMessage.contains("uzaklaşıyor", ignoreCase = true) -> {
-                "🚨 CRITICAL: Your item is moving away! ${extractGoogleMapsLink(originalMessage)}"
+            originalMessage.contains("uzaklaşıyor", ignoreCase = true) ||
+                    originalMessage.contains("uzaklasiyor", ignoreCase = true) ||
+                    originalMessage.contains("moving away", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                val mapsLink = extractGoogleMapsLink(originalMessage)
+                "🚨 THEFT ALERT: Item is being moved!\n$location\n$mapsLink"
+            }
+            originalMessage.contains("connection lost", ignoreCase = true) ||
+                    originalMessage.contains("BLE disconnected", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                "📡 CONNECTION LOST: Tracker disconnected!\n$location\nPossible theft or device moved out of range."
+            }
+            originalMessage.contains("WiFi lost", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                "📶 WIFI ALERT: WiFi connection lost!\n$location"
+            }
+            originalMessage.contains("Battery low", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                "🔋 BATTERY WARNING: Tracker battery low!\n$location\nPlease charge or replace battery soon."
             }
             originalMessage.contains("RECONNECT", ignoreCase = true) -> {
-                "🔄 Tracker reconnected: Device is back online. ${extractLocation(originalMessage)}"
+                val location = extractLocation(originalMessage)
+                "🔄 RECONNECTED: Tracker is back online\n$location"
             }
-            originalMessage.contains("WIFI_ALERT", ignoreCase = true) -> {
-                "📶 WiFi Alert: Connection lost to tracker. ${extractLocation(originalMessage)}"
+            originalMessage.contains("GPS location", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                val mapsLink = extractGoogleMapsLink(originalMessage)
+                "📍 GPS UPDATE: Current location\n$location\n$mapsLink"
             }
-            originalMessage.contains("ALERT", ignoreCase = true) -> {
-                "⚠️ Tracker Alert: ${originalMessage}"
+            originalMessage.contains("GSM alert", ignoreCase = true) -> {
+                "📱 GSM ALERT: ${originalMessage}"
             }
-            else -> "📱 Tracker Message: ${originalMessage}"
+            else -> {
+                "📱 Tracker Message: ${originalMessage}"
+            }
         }
     }
 
     private fun extractLocation(message: String): String {
-        // Koordinat formatını ara (örn: 41.008240,28.978359)
-        val locationRegex = Regex("""(\d+\.\d+),(\d+\.\d+)""")
-        val match = locationRegex.find(message)
-
-        return if (match != null) {
-            val lat = match.groupValues[1]
-            val lon = match.groupValues[2]
-            "Lat: $lat, Lon: $lon"
-        } else {
-            "Location data not available"
+        // Extract coordinates in various formats
+        // Format 1: LAT=41.008240;LON=28.978359
+        val latLonRegex = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""")
+        val latLonMatch = latLonRegex.find(message)
+        if (latLonMatch != null) {
+            val lat = latLonMatch.groupValues[1]
+            val lon = latLonMatch.groupValues[2]
+            return "📍 Location: $lat, $lon"
         }
+
+        // Format 2: Simple coordinate pair (41.008240,28.978359)
+        val coordRegex = Regex("""([\d.-]+),([\d.-]+)""")
+        val coordMatch = coordRegex.find(message)
+        if (coordMatch != null) {
+            val lat = coordMatch.groupValues[1]
+            val lon = coordMatch.groupValues[2]
+            return "📍 Location: $lat, $lon"
+        }
+
+        // Format 3: Location: text format
+        val locationRegex = Regex("""Location:\s*([\d.-]+),\s*([\d.-]+)""")
+        val locationMatch = locationRegex.find(message)
+        if (locationMatch != null) {
+            val lat = locationMatch.groupValues[1]
+            val lon = locationMatch.groupValues[2]
+            return "📍 Location: $lat, $lon"
+        }
+
+        return "📍 Location data not available"
     }
 
     private fun extractGoogleMapsLink(message: String): String {
-        // Google Maps linkini ara
-        val linkRegex = Regex("""https://maps\.google\.com/\?q=[\d.,]+""")
-        val match = linkRegex.find(message)
+        // Extract existing Google Maps link
+        val linkRegex = Regex("""https://maps\.google\.com/\?q=[\d.,-]+""")
+        val linkMatch = linkRegex.find(message)
+        if (linkMatch != null) {
+            return "🗺️ View: ${linkMatch.value}"
+        }
 
-        return if (match != null) {
-            "View location: ${match.value}"
+        // Create Google Maps link from coordinates
+        val coordRegex = Regex("""([\d.-]+),([\d.-]+)""")
+        val coordMatch = coordRegex.find(message)
+        if (coordMatch != null) {
+            val lat = coordMatch.groupValues[1]
+            val lon = coordMatch.groupValues[2]
+            return "🗺️ View: https://maps.google.com/?q=$lat,$lon"
+        }
+
+        // Extract from LAT/LON format
+        val latLonRegex = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""")
+        val latLonMatch = latLonRegex.find(message)
+        if (latLonMatch != null) {
+            val lat = latLonMatch.groupValues[1]
+            val lon = latLonMatch.groupValues[2]
+            return "🗺️ View: https://maps.google.com/?q=$lat,$lon"
+        }
+
+        return "🗺️ Map link not available"
+    }
+
+    private fun extractTimestamp(message: String): String {
+        // Extract timestamp if present
+        val timestampRegex = Regex("""\[(\d{2}:\d{2}:\d{2})\]""")
+        val timestampMatch = timestampRegex.find(message)
+        return if (timestampMatch != null) {
+            "⏰ Time: ${timestampMatch.groupValues[1]}"
         } else {
-            extractLocation(message)
+            "⏰ Time: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}"
+        }
+    }
+
+    private fun extractSignalStrength(message: String): String {
+        // Extract RSSI or signal strength information
+        val rssiRegex = Regex("""RSSI:\s*(-?\d+)""")
+        val rssiMatch = rssiRegex.find(message)
+        if (rssiMatch != null) {
+            val rssi = rssiMatch.groupValues[1].toInt()
+            val signalQuality = when {
+                rssi > -50 -> "Excellent"
+                rssi > -60 -> "Good"
+                rssi > -70 -> "Fair"
+                rssi > -80 -> "Weak"
+                else -> "Very Weak"
+            }
+            return "📶 Signal: $rssi dBm ($signalQuality)"
+        }
+        return ""
+    }
+
+    private fun extractBatteryLevel(message: String): String {
+        // Extract battery information if present
+        val batteryRegex = Regex("""Battery:\s*(\d+)%""")
+        val batteryMatch = batteryRegex.find(message)
+        if (batteryMatch != null) {
+            val battery = batteryMatch.groupValues[1].toInt()
+            val batteryIcon = when {
+                battery > 75 -> "🔋"
+                battery > 50 -> "🔋"
+                battery > 25 -> "🪫"
+                else -> "🪫"
+            }
+            return "$batteryIcon Battery: $battery%"
+        }
+        return ""
+    }
+
+    // Enhanced message formatting with all extracted information
+    private fun formatEnhancedTrackerMessage(originalMessage: String): String {
+        val basicMessage = formatTrackerMessage(originalMessage)
+        val timestamp = extractTimestamp(originalMessage)
+        val signal = extractSignalStrength(originalMessage)
+        val battery = extractBatteryLevel(originalMessage)
+
+        val additionalInfo = listOf(timestamp, signal, battery)
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+
+        return if (additionalInfo.isNotEmpty()) {
+            "$basicMessage\n\n$additionalInfo"
+        } else {
+            basicMessage
         }
     }
 }
