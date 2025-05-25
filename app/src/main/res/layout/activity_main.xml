@@ -25,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Production ESP32 tracking system"
+            android:text="Production ESP32 tracking system v2.1"
             android:textSize="14sp"
             android:textColor="@color/gray_700"
             android:layout_marginBottom="16dp"
@@ -236,7 +236,7 @@
                     android:textStyle="bold"
                     android:textColor="@color/white"
                     android:background="@color/red_500"
-                    android:enabled="false" />
+                    android:enabled="true" />
 
             </LinearLayout>
 
@@ -356,7 +356,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Debug Console - DÜZELTME: ScrollView geri eklendi -->
+        <!-- Debug Console -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -401,7 +401,6 @@
 
                 </LinearLayout>
 
-                <!-- DÜZELTME: ScrollView ile TextView -->
                 <ScrollView
                     android:id="@+id/debugScrollView"
                     android:layout_width="match_parent"
@@ -427,7 +426,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="LATEST MESSAGES AT TOP | Last 25 messages | Real data only"
+                    android:text="LATEST MESSAGES AT TOP | Last 25 messages | Real data only | Toast notifications enabled"
                     android:textSize="10sp"
                     android:textColor="@color/gray_500"
                     android:layout_marginTop="4dp"
@@ -455,7 +454,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Usage Guide"
+                    android:text="Usage Guide - v2.1 FIXES"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -464,7 +463,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="1. Press START TRACKING to begin\n2. Use DISTANCE TEST to calibrate alert distance\n3. Enable/disable alarm with switch above\n4. Monitor all connections in status cards\n5. Check debug console for technical details\n6. System uses real sensor data only"
+                    android:text="FIXES:\n• SMS delivery improved\n• Silence alarm works via BLE/WiFi/SMS\n• WiFi available → REQUEST SMS button\n• Smart alert logic (no SMS if BLE/WiFi available)\n• Popup notifications for all actions\n• RSSI threshold sync with ESP32\n• Better connection management"
                     android:textSize="13sp"
                     android:textColor="@color/gray_700"
                     android:lineSpacingExtra="2dp" />
@@ -477,7 +476,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Smart Tracker v2.0 - Production Build"
+            android:text="Smart Tracker v2.1 - Production Build + FIXES"
             android:textSize="12sp"
             android:textColor="@color/gray_500"
             android:layout_marginBottom="4dp" />
@@ -485,7 +484,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Real hardware • Live GPS • Actual SMS alerts"
+            android:text="Real hardware • Live GPS • Fixed SMS alerts • Smart notifications"
             android:textSize="11sp"
             android:textColor="@color/gray_500"
             android:gravity="center"
