@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="12dp"
@@ -16,20 +15,11 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Smart Tracker"
+            android:text="SmartTracker"
             android:textSize="26sp"
             android:textStyle="bold"
             android:textColor="@color/blue_700"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Production ESP32 tracking system v2.1"
-            android:textSize="14sp"
-            android:textColor="@color/gray_700"
-            android:layout_marginBottom="16dp"
-            android:gravity="center" />
+            android:layout_marginBottom="16dp" />
 
         <!-- Connection Status Card -->
         <androidx.cardview.widget.CardView
@@ -259,7 +249,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Distance Calibration"
+                    android:text="Distance Configuration"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -275,6 +265,32 @@
                     android:textStyle="bold"
                     android:layout_marginBottom="8dp" />
 
+                <!-- Manual Threshold Selection -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Set Distance:"
+                        android:textSize="14sp"
+                        android:textColor="@color/gray_700"
+                        android:layout_marginEnd="8dp" />
+
+                    <Spinner
+                        android:id="@+id/thresholdSpinner"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="48dp" />
+
+                </LinearLayout>
+
+                <!-- Distance Test Buttons -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -312,6 +328,53 @@
 
         </androidx.cardview.widget.CardView>
 
+        <!-- GPS Location Card -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:elevation="4dp"
+            android:radius="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="GPS Location"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/blue_700"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/gpsStatusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="GPS: Not available"
+                    android:textSize="14sp"
+                    android:textColor="@color/gray_500"
+                    android:layout_marginBottom="8dp" />
+
+                <Button
+                    android:id="@+id/requestGpsButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:text="REQUEST GPS LOCATION"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/white"
+                    android:background="@color/blue_600"
+                    android:enabled="false" />
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
         <!-- Status Card -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
@@ -341,16 +404,7 @@
                     android:layout_height="wrap_content"
                     android:text="Status: Initializing..."
                     android:textSize="14sp"
-                    android:textColor="@color/gray_700"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/gpsStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="GPS: Not available"
-                    android:textSize="14sp"
-                    android:textColor="@color/gray_500" />
+                    android:textColor="@color/gray_700" />
 
             </LinearLayout>
 
@@ -426,7 +480,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="LATEST MESSAGES AT TOP | Last 25 messages | Real data only | Toast notifications enabled"
+                    android:text="LATEST MESSAGES AT TOP | Last 25 messages | Real data only"
                     android:textSize="10sp"
                     android:textColor="@color/gray_500"
                     android:layout_marginTop="4dp"
@@ -437,7 +491,7 @@
 
         </androidx.cardview.widget.CardView>
 
-        <!-- Production Info Card -->
+        <!-- How to Use Guide -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -454,7 +508,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Usage Guide - v2.1 FIXES"
+                    android:text="How to Use"
                     android:textSize="16sp"
                     android:textStyle="bold"
                     android:textColor="@color/blue_700"
@@ -463,7 +517,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="FIXES:\n• SMS delivery improved\n• Silence alarm works via BLE/WiFi/SMS\n• WiFi available → REQUEST SMS button\n• Smart alert logic (no SMS if BLE/WiFi available)\n• Popup notifications for all actions\n• RSSI threshold sync with ESP32\n• Better connection management"
+                    android:text="1. START TRACKING - Begin monitoring device distance\n2. Set alert distance using dropdown or distance test\n3. SILENCE ALARM - Stop buzzer for 5 minutes\n4. REQUEST GPS - Get current location\n5. Alarm controls buzzer only\n6. Notifications sent when tracking is active"
                     android:textSize="13sp"
                     android:textColor="@color/gray_700"
                     android:lineSpacingExtra="2dp" />
@@ -476,19 +530,11 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Smart Tracker v2.1 - Production Build + FIXES"
+            android:text="SmartTracker - Real hardware tracking system"
             android:textSize="12sp"
             android:textColor="@color/gray_500"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Real hardware • Live GPS • Fixed SMS alerts • Smart notifications"
-            android:textSize="11sp"
-            android:textColor="@color/gray_500"
-            android:gravity="center"
-            android:layout_marginBottom="16dp" />
+            android:layout_marginBottom="16dp"
+            android:gravity="center" />
 
     </LinearLayout>
 

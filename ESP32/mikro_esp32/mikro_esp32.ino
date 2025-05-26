@@ -6,78 +6,69 @@
 #include <HardwareSerial.h>
 #include <TinyGPSPlus.h>
 
-// --- PIN Definitions ---
-#define GSM_RX_PIN 16        // SIM808 TXD → ESP32 RX2
-#define GSM_TX_PIN 17        // SIM808 RXD → ESP32 TX2
-#define GPS_RX_PIN 18        // Neo-6M TXD → ESP32
-#define BUZZER_PIN 27        // Physical buzzer pin
+#define GSM_RX_PIN 16
+#define GSM_TX_PIN 17
+#define GPS_RX_PIN 18
+#define BUZZER_PIN 27
 
-// Status LED Pins
 #define BLE_LED_PIN 33
 #define WIFI_LED_PIN 25
 #define GSM_LED_PIN 26
 
-// BLE UUIDs
 #define BLE_SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define BLE_CHAR_UUID    "abcd1234-ab12-cd34-ef00-1234567890ab"
 
-// Wi‑Fi AP Settings
 const char* AP_SSID = "ESP_TRACKER";
 const char* AP_PASS = "12345678";
 #define UDP_PORT 5000
 
-// GSM and GPS Modules
-HardwareSerial gsmSerial(2);    // UART2 for SIM808
-HardwareSerial gpsSerial(1);    // UART1 for Neo-6M
+HardwareSerial gsmSerial(2);
+HardwareSerial gpsSerial(1);
 TinyGPSPlus gps;
 
-// --- Alarm System Variables - DÜZELTME: Silence state eklendi
-bool alarmEnabled = true;           
-bool buzzerActive = false;          
+bool alarmEnabled = true;
+bool trackingEnabled = false;
+bool buzzerActive = false;
 bool alarmTriggered = false;
-bool alarmSilenced = false;         // DÜZELTME: Silence durumu
-bool distanceCalibrating = false;   // DÜZELTME: Calibration sırasında alarm yok
-unsigned long buzzerStartTime = 0;  
-unsigned long lastBuzzerBeep = 0;   
-unsigned long silenceTime = 0;     // DÜZELTME: Silence zamanı
+bool alarmSilenced = false;
+bool distanceCalibrating = false;
+unsigned long buzzerStartTime = 0;
+unsigned long lastBuzzerBeep = 0;
+unsigned long silenceTime = 0;
 const unsigned long BUZZER_DURATION = 30000;
 const unsigned long BEEP_INTERVAL = 1000;
-const unsigned long SILENCE_DURATION = 300000; // 5 dakika silence
+const unsigned long SILENCE_DURATION = 300000;
 
-// --- RSSI Management - DÜZELTME: Başlangıç threshold çok düşük
 bool rssiTestMode = false;
-int currentRSSI = 0;               
-int rssiThreshold = -1000;         // DÜZELTME: Başta çok düşük, hemen ötmesin
+int currentRSSI = 0;
+int rssiThreshold = -1000;
 unsigned long lastRssiUpdate = 0;
 const unsigned long RSSI_TIMEOUT = 10000;
 
-// --- Alert spam prevention - DÜZELTME: Cooldown süreleri optimize ---
 unsigned long lastBLEAlertTime = 0;
 unsigned long lastWiFiAlertTime = 0;
 unsigned long lastSMSAlertTime = 0;
-const unsigned long BLE_ALERT_COOLDOWN = 5000;   // 5 saniye
-const unsigned long WIFI_ALERT_COOLDOWN = 10000; // 10 saniye
-const unsigned long SMS_ALERT_COOLDOWN = 60000;  // 60 saniye
+const unsigned long BLE_ALERT_COOLDOWN = 5000;
+const unsigned long WIFI_ALERT_COOLDOWN = 10000;
+const unsigned long SMS_ALERT_COOLDOWN = 60000;
 
-// --- State Machine ---
 enum TrackerState { 
     INIT, 
-    SCAN_BLE,           
-    CHECK_DISTANCE,     
-    ALERT_SEND_BLE,     
-    SCAN_WIFI,          
-    WIFI_LISTEN,        
-    SCAN_GSM,           
-    ALERT_SEND_GSM,     
-    ALL_DOWN,           
-    RECONNECT_SCAN,     
+    SCAN_BLE,
+    CHECK_DISTANCE,
+    ALERT_SEND_BLE,
+    SCAN_WIFI,
+    WIFI_LISTEN,
+    SCAN_GSM,
+    ALERT_SEND_GSM,
+    ALL_DOWN,
+    RECONNECT_SCAN,
     SLEEP_MODE,
-    ALARM_ACTIVE        
+    ALARM_ACTIVE
 };
 
 TrackerState currentState = INIT;
 
-// --- Global Variables ---
 BLEServer *pServer;
 BLECharacteristic *pAlertChar;
 bool bleConnected = false;
@@ -85,25 +76,21 @@ bool deviceConnected = false;
 
 WiFiUDP udp;
 
-// GPS Variables
-double lastLat = 0.0;  
+double lastLat = 0.0;
 double lastLon = 0.0;
 bool gpsFixed = false;
 unsigned long lastGpsUpdate = 0;
 
-// State Machine Timers
 unsigned long stateStart = 0;
 unsigned long lastStatusPrint = 0;
 unsigned long lastGpsRead = 0;
 
-// Phone number for SMS alerts
-const String alertPhoneNumber = "+905447661357"; 
+const String alertPhoneNumber = "+905447661357";
 
-// Timing Constants
-const unsigned long STATE_TIMEOUT = 30000;       // 30 seconds for BLE/WiFi/GSM
-const unsigned long SLEEP_DURATION = 30000;    
-const unsigned long GPS_READ_INTERVAL = 20000;   
-const unsigned long STATUS_PRINT_INTERVAL = 300000; // 5 minutes
+const unsigned long STATE_TIMEOUT = 30000;
+const unsigned long SLEEP_DURATION = 30000;
+const unsigned long GPS_READ_INTERVAL = 20000;
+const unsigned long STATUS_PRINT_INTERVAL = 300000;
 
 void silenceAlarmPermanent() {
     buzzerActive = false;
@@ -113,10 +100,10 @@ void silenceAlarmPermanent() {
     digitalWrite(BUZZER_PIN, LOW);
     Serial.println("ALARM PERMANENTLY SILENCED - 5 minutes");
 }
+
 bool isAlarmSilenced() {
     if (!alarmSilenced) return false;
     
-    // 5 dakika geçmişse silence'ı kaldır
     if (millis() - silenceTime > SILENCE_DURATION) {
         alarmSilenced = false;
         Serial.println("Alarm silence period ended - monitoring resumed");
@@ -125,8 +112,6 @@ bool isAlarmSilenced() {
     return true;
 }
 
-
-// DÜZELTME: Buzzer kontrol - silence ve calibration check
 void startBuzzer() {
     if (!alarmEnabled || isAlarmSilenced() || distanceCalibrating) {
         Serial.println("Buzzer blocked - alarm disabled/silenced/calibrating");
@@ -144,9 +129,8 @@ void startBuzzer() {
     digitalWrite(BUZZER_PIN, LOW);
 }
 
-// DÜZELTME: Stop buzzer - hem lokal hem remote çağrılabilir
 void stopBuzzer() {
-    if (!buzzerActive && !alarmTriggered) return; // Zaten durmuşsa işlem yapma
+    if (!buzzerActive && !alarmTriggered) return;
     
     buzzerActive = false;
     alarmTriggered = false;
@@ -159,7 +143,6 @@ void handleBuzzer() {
     
     unsigned long currentTime = millis();
     
-    // Auto stop after 30 seconds
     if (currentTime - buzzerStartTime > BUZZER_DURATION) {
         buzzerActive = false;
         alarmTriggered = false;
@@ -168,7 +151,6 @@ void handleBuzzer() {
         return;
     }
     
-    // Beep every second
     if (currentTime - lastBuzzerBeep > BEEP_INTERVAL) {
         digitalWrite(BUZZER_PIN, HIGH);
         delay(200);
@@ -177,20 +159,16 @@ void handleBuzzer() {
     }
 }
 
-// Update LED status indicators
 void updateLEDStatus() {
-    // BLE LED
     digitalWrite(BLE_LED_PIN, bleConnected ? HIGH : LOW);
     
-    // WiFi LED  
     bool wifiActive = (WiFi.softAPgetStationNum() > 0);
     digitalWrite(WIFI_LED_PIN, wifiActive ? HIGH : LOW);
     
-    // GSM LED - Check less frequently
     static unsigned long lastGSMCheck = 0;
     static bool gsmStatus = false;
     
-    if (millis() - lastGSMCheck > 30000) { // Every 30 seconds
+    if (millis() - lastGSMCheck > 30000) {
         gsmStatus = checkGSMStatus();
         lastGSMCheck = millis();
     }
@@ -198,60 +176,61 @@ void updateLEDStatus() {
     digitalWrite(GSM_LED_PIN, gsmStatus ? HIGH : LOW);
 }
 
-// DÜZELTME: Distance alert check - calibration sırasında çalışmasın
 bool checkDistanceAlert() {
-    if (!bleConnected || !deviceConnected || distanceCalibrating) {
+    // Don't check alerts if not connected, calibrating, or tracking disabled
+    if (!bleConnected || !deviceConnected || distanceCalibrating || !trackingEnabled) {
         return false;
     }
     
-    // Threshold çok düşükse (ilk açılış) alert verme
+    // Don't alert if threshold not properly set
     if (rssiThreshold < -200) {
         return false;
     }
     
     // Check if we have recent RSSI data
     if (millis() - lastRssiUpdate > RSSI_TIMEOUT) {
-        Serial.println("RSSI data timeout - requesting update");
         return false;
     }
     
-    // Check if device is too far
+    // Main alert condition: RSSI below threshold
     if (currentRSSI < rssiThreshold) {
-        Serial.printf("DISTANCE ALERT! RSSI: %d < %d\n", currentRSSI, rssiThreshold);
+        // Only log alert detection occasionally to reduce spam
+        static unsigned long lastAlertLog = 0;
+        unsigned long currentTime = millis();
+        
+        if (currentTime - lastAlertLog > 10000) { // Log every 10 seconds max
+            Serial.printf("DISTANCE ALERT! RSSI: %d < %d | Tracking: %s | Alarm: %s\n", 
+                         currentRSSI, rssiThreshold, trackingEnabled ? "ON" : "OFF", alarmEnabled ? "ON" : "OFF");
+            lastAlertLog = currentTime;
+        }
         return true;
     }
     
     return false;
 }
 
-// DÜZELTME: SMS gönderim durumunu kontrol eden global fonksiyon
 bool shouldSendSMS() {
     unsigned long currentTime = millis();
     
-    // SMS cooldown kontrolü
     if (currentTime - lastSMSAlertTime < SMS_ALERT_COOLDOWN) {
         Serial.println("SMS cooldown active - skipping");
         return false;
     }
     
-    // BLE bağlıysa SMS gönderme (çünkü cihaz yakında)
     if (bleConnected) {
         Serial.println("BLE connected - SMS not needed");
         return false;
     }
     
-    // WiFi varsa ve BLE yoksa SMS gönderme, WiFi ile bildirim yeterli
     if (WiFi.softAPgetStationNum() > 0) {
         Serial.println("WiFi available - SMS not needed");
         return false;
     }
     
-    // SADECE BLE yok VE WiFi yok ise SMS gönder
     Serial.println("Both BLE and WiFi down - SMS needed");
     return true;
 }
 
-// --- BLE Server Callbacks ---
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         bleConnected = true;
@@ -271,14 +250,20 @@ class MyServerCallbacks: public BLEServerCallbacks {
         digitalWrite(BLE_LED_PIN, LOW);
         Serial.println("BLE Client disconnected!");
         
-        // DÜZELTME: BLE kopunca sadece alarm aktifse buzzer çal
-        if (alarmEnabled) {
-            startBuzzer();
-        }
-        
-        // DÜZELTME: SMS gönderilip gönderilmeyeceğini kontrol et
-        if (shouldSendSMS()) {
-            alarmTriggered = true; // SMS için flag set et
+        if (trackingEnabled) {
+            // Check if alarm should trigger (not silenced)
+            if (alarmEnabled && !isAlarmSilenced()) {
+                startBuzzer();
+                Serial.println("BLE disconnect - alarm triggered");
+            } else if (isAlarmSilenced()) {
+                Serial.println("BLE disconnect - alarm silenced, no buzzer");
+            } else {
+                Serial.println("BLE disconnect - alarm disabled, no buzzer");
+            }
+            
+            if (shouldSendSMS()) {
+                alarmTriggered = true;
+            }
         }
         
         delay(500);
@@ -287,7 +272,6 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
-// BLE Characteristic Callbacks - DÜZELTME: Threshold ve Silence komutları
 class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pCharacteristic) {
         String value = pCharacteristic->getValue().c_str();
@@ -295,13 +279,13 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
             bool shouldLog = value.startsWith("ALARM") || value == "PING" || 
                            value == "LOCATION" || value.startsWith("SET_THRESHOLD") ||
                            value.startsWith("ANDROID_RSSI") || value == "REQUEST_SMS" ||
-                           value == "SILENCE_ALARM" || value.startsWith("INIT_THRESHOLD");
+                           value == "SILENCE_ALARM" || value.startsWith("INIT_THRESHOLD") ||
+                           value == "REQUEST_GPS" || value == "START_TRACKING" || value == "STOP_TRACKING";
             
             if (shouldLog) {
                 Serial.printf("BLE Command: %s\n", value.c_str());
             }
             
-            // DÜZELTME: İlk threshold ayarı
             if (value.startsWith("INIT_THRESHOLD;")) {
                 int semicolonIndex = value.indexOf(';');
                 if (semicolonIndex > 0) {
@@ -318,7 +302,6 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                     }
                 }
             }
-            // Normal threshold setting
             else if (value.startsWith("SET_THRESHOLD;")) {
                 int semicolonIndex = value.indexOf(';');
                 if (semicolonIndex > 0) {
@@ -329,16 +312,22 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         rssiThreshold = newThreshold;
                         Serial.printf("Distance threshold updated: %d dBm\n", rssiThreshold);
                         
+                        // CRITICAL: Automatically stop test when threshold is set manually
+                        if (rssiTestMode || distanceCalibrating) {
+                            rssiTestMode = false;
+                            distanceCalibrating = false;
+                            Serial.println("RSSI distance test auto-stopped after threshold set");
+                        }
+                        
                         String response = "THRESHOLD_SET;" + String(rssiThreshold);
                         pAlertChar->setValue(response.c_str());
                         pAlertChar->notify();
                     }
                 }
             }
-            // DÜZELTME: Distance calibration start/stop
             else if (value == "START_RSSI_TEST") {
                 rssiTestMode = true;
-                distanceCalibrating = true; // DÜZELTME: Calibration flag
+                distanceCalibrating = true;
                 Serial.println("RSSI distance test STARTED - alerts disabled");
                 String response = "RSSI_TEST_STARTED";
                 pAlertChar->setValue(response.c_str());
@@ -346,13 +335,12 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
             }
             else if (value == "STOP_RSSI_TEST") {
                 rssiTestMode = false;
-                distanceCalibrating = false; // DÜZELTME: Calibration flag
+                distanceCalibrating = false;
                 Serial.println("RSSI distance test STOPPED - alerts enabled");
                 String response = "RSSI_TEST_STOPPED";
                 pAlertChar->setValue(response.c_str());
                 pAlertChar->notify();
             }
-            // DÜZELTME: Silence alarm komutu
             else if (value == "SILENCE_ALARM") {
                 Serial.println("SILENCE_ALARM command received via BLE");
                 silenceAlarmPermanent();
@@ -361,7 +349,6 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                 pAlertChar->notify();
                 Serial.println("Alarm silenced for 5 minutes via BLE");
             }
-            // DÜZELTME: Android RSSI - calibration sırasında log
             else if (value.startsWith("ANDROID_RSSI;")) {
                 int semicolonIndex = value.indexOf(';');
                 if (semicolonIndex > 0) {
@@ -372,14 +359,53 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         currentRSSI = androidRSSI;
                         lastRssiUpdate = millis();
                         
-                        // Log during calibration or test mode
                         if (rssiTestMode || distanceCalibrating) {
-                            Serial.printf("RSSI updated: %d dBm\n", androidRSSI);
+                            Serial.printf("RSSI updated: %d dBm (testing)\n", androidRSSI);
+                        } else {
+                            // Only log RSSI changes or important status changes
+                            static int lastLoggedRSSI = 0;
+                            static unsigned long lastRSSILog = 0;
+                            
+                            bool shouldLog = (abs(androidRSSI - lastLoggedRSSI) >= 2) || // 2dBm change
+                                           (millis() - lastRSSILog > 30000) || // Every 30 seconds
+                                           ((androidRSSI <= rssiThreshold) != (lastLoggedRSSI <= rssiThreshold)); // Status change
+                            
+                            if (shouldLog) {
+                                String status = (androidRSSI > rssiThreshold) ? "SAFE" : "ALERT_ZONE";
+                                Serial.printf("RSSI: %d dBm | Alert: %d dBm | %s | Track: %s\n", 
+                                            androidRSSI, rssiThreshold, status.c_str(), trackingEnabled ? "ON" : "OFF");
+                                lastLoggedRSSI = androidRSSI;
+                                lastRSSILog = millis();
+                            }
                         }
                     }
                 }
             }
-            // Diğer komutlar...
+            else if (value == "START_TRACKING") {
+                trackingEnabled = true;
+                Serial.println(">> Tracking ENABLED via BLE <<");
+                String response = "TRACKING_STATUS;ENABLED";
+                pAlertChar->setValue(response.c_str());
+                pAlertChar->notify();
+            }
+            else if (value == "STOP_TRACKING") {
+                trackingEnabled = false;
+                Serial.println(">> Tracking DISABLED via BLE <<");
+                String response = "TRACKING_STATUS;DISABLED";
+                pAlertChar->setValue(response.c_str());
+                pAlertChar->notify();
+            }
+            else if (value == "REQUEST_GPS") {
+                String response = "GPS_DATA;";
+                if (gpsFixed) {
+                    response += "LAT=" + String(lastLat, 6) + ";LON=" + String(lastLon, 6);
+                } else {
+                    response += "NO_FIX";
+                }
+                pAlertChar->setValue(response.c_str());
+                pAlertChar->notify();
+                Serial.println("GPS data sent via BLE");
+            }
             else if (value == "PING") {
                 String response = "PONG";
                 if (gpsFixed) {
@@ -388,10 +414,9 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                 pAlertChar->setValue(response.c_str());
                 pAlertChar->notify();
             }
-            // Alarm enable/disable
             else if (value == "ALARM_ON") {
                 alarmEnabled = true;
-                alarmSilenced = false; // Silence'ı kaldır
+                alarmSilenced = false;
                 Serial.println("Alarm system ENABLED via BLE");
                 String response = "ALARM_STATUS;ENABLED";
                 pAlertChar->setValue(response.c_str());
@@ -415,11 +440,8 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
     
-    Serial.println("\n=== ESP32 Smart Tracker v2.1 Production ===");
-    Serial.println("FIXES: SMS delivery + Alarm control + WiFi logic");
-    Serial.println("===========================================");
+    Serial.println("\n=== ESP32 SmartTracker ===");
     
-    // Pin configurations
     pinMode(BLE_LED_PIN, OUTPUT);
     pinMode(WIFI_LED_PIN, OUTPUT);
     pinMode(GSM_LED_PIN, OUTPUT);
@@ -430,21 +452,17 @@ void setup() {
     digitalWrite(GSM_LED_PIN, LOW);
     digitalWrite(BUZZER_PIN, LOW);
     
-    // Initialize modules
     setupBLE();
     setupWiFiAP();
     setupGSMGPS();
     
-    // Initial state
     currentState = SCAN_BLE;
     stateStart = millis();
     
-    Serial.println("All systems initialized - Production ready!");
+    Serial.println("All systems initialized!");
     Serial.println("Alarm system: ENABLED by default");
-    Serial.println("State machine: ACTIVE");
-    Serial.println("===========================================\n");
+    Serial.println("Tracking: DISABLED by default (enable via app)");
     
-    // Startup LED signal
     for(int i = 0; i < 3; i++) {
         digitalWrite(BLE_LED_PIN, HIGH);
         digitalWrite(WIFI_LED_PIN, HIGH);
@@ -460,28 +478,22 @@ void setup() {
 void loop() {
     unsigned long currentTime = millis();
     
-    // Read GPS regularly
     if (currentTime - lastGpsRead >= GPS_READ_INTERVAL) {
         readGPS();
         lastGpsRead = currentTime;
     }
     
-    // Update LED status
     updateLEDStatus();
     
-    // Status printing - Less frequent
     if (currentTime - lastStatusPrint >= STATUS_PRINT_INTERVAL) {
         printDetailedStatus();
         lastStatusPrint = currentTime;
     }
     
-    // Buzzer control
     handleBuzzer();
     
-    // Main State Machine
     processStateMachine();
     
-    // UDP packet check
     checkUDPPackets();
     
     delay(100);
@@ -511,49 +523,56 @@ void processStateMachine() {
         case CHECK_DISTANCE:
             if (!bleConnected) {
                 Serial.println("BLE: Connection lost");
-                // Alarm kontrolü: sadece buzzer için
-                if (alarmEnabled) {
-                    startBuzzer();
-                }
-                // SMS gönderilmesi gerekip gerekmediğini kontrol et
-                if (shouldSendSMS()) {
-                    currentState = SCAN_GSM;
+                if (trackingEnabled) {
+                    // Check silence before triggering alarm
+                    if (alarmEnabled && !isAlarmSilenced()) {
+                        startBuzzer();
+                    }
+                    if (shouldSendSMS()) {
+                        currentState = SCAN_GSM;
+                    } else {
+                        currentState = SCAN_WIFI;
+                    }
                 } else {
                     currentState = SCAN_WIFI;
                 }
                 stateStart = currentTime;
-            } else if (checkDistanceAlert()) {
-                // Alarm kontrolü: sadece buzzer için
-                if (alarmEnabled) {
+            } else if (trackingEnabled && checkDistanceAlert()) {
+                // Alert cooldown per state cycle - more flexible
+                Serial.printf("Distance alert detected! Tracking: %s, Alarm: %s, Silenced: %s\n", 
+                            trackingEnabled ? "ON" : "OFF", alarmEnabled ? "ON" : "OFF", 
+                            isAlarmSilenced() ? "YES" : "NO");
+                
+                // Only trigger buzzer if not silenced
+                if (alarmEnabled && !isAlarmSilenced()) {
                     startBuzzer();
                 }
-                // BLE varsa BLE üzerinden bildirim gönder
                 currentState = ALERT_SEND_BLE;
                 stateStart = currentTime;
             }
             break;
             
         case ALERT_SEND_BLE:
-            if (bleConnected) {
+            if (bleConnected && trackingEnabled) {
                 unsigned long currentTime = millis();
                 
-                // BLE alert spam kontrolü
+                // BLE alert with cooldown
                 if (currentTime - lastBLEAlertTime > BLE_ALERT_COOLDOWN) {
-                    String alertMsg = "ALERT: Device moved away! RSSI: " + String(currentRSSI);
+                    String alertMsg = "ALERT: Device moved away! RSSI: " + String(currentRSSI) + " < " + String(rssiThreshold);
                     if (gpsFixed) {
                         alertMsg += " Location: " + String(lastLat, 6) + "," + String(lastLon, 6);
                     }
                     pAlertChar->setValue(alertMsg.c_str());
                     pAlertChar->notify();
-                    Serial.println("BLE alert sent");
+                    Serial.println("BLE alert sent: " + alertMsg);
                     lastBLEAlertTime = currentTime;
                 }
                 
-                // BLE ile bildirim gönderildi, işlem tamamlandı
+                // Return to CHECK_DISTANCE after sending alert
                 currentState = CHECK_DISTANCE;
                 stateStart = currentTime;
             } else {
-                // BLE yoksa WiFi'ye geç
+                Serial.println("BLE alert skipped - no connection or tracking disabled");
                 currentState = SCAN_WIFI;
                 stateStart = currentTime;
             }
@@ -566,7 +585,6 @@ void processStateMachine() {
                 stateStart = currentTime;
             } else if (currentTime - stateStart > STATE_TIMEOUT) {
                 Serial.println("WiFi: Timeout");
-                // DÜZELTME: WiFi timeout'unda SMS gönderilmesi gerekiyorsa GSM'e geç
                 if (shouldSendSMS() && alarmTriggered) {
                     Serial.println("WiFi timeout + alert pending = switching to GSM");
                     currentState = SCAN_GSM;
@@ -581,7 +599,6 @@ void processStateMachine() {
         case WIFI_LISTEN:
             if (WiFi.softAPgetStationNum() == 0) {
                 Serial.println("WiFi: Client disconnected");
-                // DÜZELTME: WiFi kopunca SMS gönderilmesi gerekiyorsa
                 if (shouldSendSMS()) {
                     alarmTriggered = true;
                     currentState = SCAN_GSM;
@@ -590,13 +607,10 @@ void processStateMachine() {
                 }
                 stateStart = currentTime;
             }
-            // WiFi bağlıyken bildirim gönderebilir
-            else if (alarmTriggered) {
+            else if (alarmTriggered && trackingEnabled) {
                 unsigned long currentTime = millis();
                 
-                // WiFi alert spam kontrolü
                 if (currentTime - lastWiFiAlertTime > WIFI_ALERT_COOLDOWN) {
-                    // WiFi üzerinden bildirim gönder
                     Serial.println("Sending alert via WiFi/UDP");
                     WiFiUDP alertUdp;
                     alertUdp.begin(5001);
@@ -613,7 +627,6 @@ void processStateMachine() {
                     lastWiFiAlertTime = currentTime;
                 }
                 
-                // Bildirim gönderildi, buzzer flag'ini sıfırla
                 alarmTriggered = false;
             }
             break;
@@ -622,7 +635,6 @@ void processStateMachine() {
             if (checkGSMStatus()) {
                 Serial.println("GSM: Network available");
                 
-                // DÜZELTME: SMS gönderilmesi gerekiyorsa ve cooldown geçmişse
                 if (alarmTriggered && shouldSendSMS()) {
                     Serial.println("Conditions met for SMS alert");
                     currentState = ALERT_SEND_GSM;
@@ -639,15 +651,15 @@ void processStateMachine() {
             
         case ALERT_SEND_GSM:
             if (checkGSMStatus()) {
-                String smsMsg = "SMART TRACKER ALERT: Your item is moving away! ";
+                String smsMsg = "SmartTracker ALERT: Your item is moving away! ";
                 if (gpsFixed) {
                     smsMsg += "Location: https://maps.google.com/?q=" + String(lastLat, 6) + "," + String(lastLon, 6);
                 } else {
                     smsMsg += "GPS location not available.";
                 }
                 sendSMSAlert(smsMsg);
-                lastSMSAlertTime = currentTime; // DÜZELTME: SMS cooldown timer set et
-                alarmTriggered = false; // Flag clear
+                lastSMSAlertTime = currentTime;
+                alarmTriggered = false;
                 Serial.println("SMS alert sent via GSM");
             }
             currentState = RECONNECT_SCAN;
@@ -655,12 +667,10 @@ void processStateMachine() {
             break;
             
         case ALL_DOWN:
-            // Only print once when entering this state
             if (currentTime - stateStart < 1000) {
                 Serial.println("ALL_DOWN: No connections - waiting for recovery");
             }
             
-            // Wait before retrying
             if (currentTime - stateStart > SLEEP_DURATION) {
                 Serial.println("ALL_DOWN: Recovery attempt...");
                 currentState = RECONNECT_SCAN;
@@ -744,39 +754,33 @@ void setupWiFiAP() {
 void setupGSMGPS() {
     Serial.println("Initializing GSM/GPS modules...");
     
-    // Initialize GSM (SIM808)
     gsmSerial.begin(9600, SERIAL_8N1, GSM_RX_PIN, GSM_TX_PIN);
     delay(3000);
     
-    // GSM modülü reset ve temel ayarlar
     Serial.println("Configuring GSM module...");
-    gsmSerial.println("AT+CFUN=1,1"); // Full reset
+    gsmSerial.println("AT+CFUN=1,1");
     delay(5000);
     
-    // Temel AT komutları
-    gsmSerial.println("ATE0"); // Echo off
-    delay(1000);
-    while (gsmSerial.available()) gsmSerial.read(); // Buffer temizle
-    
-    gsmSerial.println("AT+CMGF=1"); // SMS text mode
+    gsmSerial.println("ATE0");
     delay(1000);
     while (gsmSerial.available()) gsmSerial.read();
     
-    gsmSerial.println("AT+CSCS=\"GSM\""); // Character set
+    gsmSerial.println("AT+CMGF=1");
     delay(1000);
     while (gsmSerial.available()) gsmSerial.read();
     
-    // DÜZELTME: Daha güvenilir SMS center ayarı
+    gsmSerial.println("AT+CSCS=\"GSM\"");
+    delay(1000);
+    while (gsmSerial.available()) gsmSerial.read();
+    
     Serial.println("Setting SMS center...");
-    gsmSerial.println("AT+CSCA=\"+902322455667\""); // Turkcell SMS center
+    gsmSerial.println("AT+CSCA=\"+902322455667\"");
     delay(2000);
     while (gsmSerial.available()) gsmSerial.read();
     
-    // Initialize GPS (Neo-6M)  
     gpsSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, -1);
     delay(1000);
     
-    // GSM test
     gsmSerial.println("AT");
     delay(2000);
     if (gsmSerial.available()) {
@@ -802,9 +806,8 @@ void readGPS() {
                 gpsFixed = true;
                 lastGpsUpdate = millis();
                 
-                // GPS log'u daha az sıklıkla
                 static unsigned long lastGpsPrint = 0;
-                if (millis() - lastGpsPrint > 120000) { // Her 2 dakikada bir
+                if (millis() - lastGpsPrint > 120000) {
                     Serial.printf("GPS: %.6f, %.6f (sats: %d)\n", 
                                 lastLat, lastLon, gps.satellites.value());
                     lastGpsPrint = millis();
@@ -813,14 +816,13 @@ void readGPS() {
         }
     }
     
-    // Check GPS timeout
-    if (millis() - lastGpsUpdate > 180000) { // 3 minute timeout
+    if (millis() - lastGpsUpdate > 180000) {
         gpsFixed = false;
     }
 }
 
 bool checkGSMStatus() {
-    gsmSerial.println("AT+CSQ"); // Check signal quality
+    gsmSerial.println("AT+CSQ");
     delay(1000);
     
     String response = "";
@@ -830,34 +832,30 @@ bool checkGSMStatus() {
         response += gsmSerial.readString();
     }
     
-    // Clear any remaining data
     while (gsmSerial.available()) {
         gsmSerial.read();
     }
     
     if (response.indexOf("+CSQ:") >= 0 && response.indexOf("99,99") < 0) {
-        return true; // Good signal
+        return true;
     }
     
     return false;
 }
 
-// DÜZELTME: SMS gönderme - otomatik SMS center detection
 void sendSMSAlert(String message) {
     if (!checkGSMStatus()) {
         Serial.println("GSM not available for SMS");
         return;
     }
     
-    Serial.println("=== SMS SENDING v2.2 - AUTO SMS CENTER ===");
+    Serial.println("=== SMS SENDING ===");
     
-    // Buffer temizle
     while (gsmSerial.available()) {
         gsmSerial.read();
     }
     delay(1000);
     
-    // DÜZELTME: Önce mevcut SMS center'ı kontrol et
     Serial.println("Checking current SMS center...");
     gsmSerial.println("AT+CSCA?");
     delay(3000);
@@ -868,7 +866,6 @@ void sendSMSAlert(String message) {
     }
     Serial.println("Current SMSC: " + currentSMSC);
     
-    // DÜZELTME: Eğer SMS center boş veya hatalıysa, otomatik tespit et
     bool needSetSMSC = false;
     if (currentSMSC.indexOf("+CSCA:") < 0 || 
         currentSMSC.indexOf("\"\"") >= 0 || 
@@ -879,20 +876,18 @@ void sendSMSAlert(String message) {
     if (needSetSMSC) {
         Serial.println("Auto-detecting SMS center...");
         
-        // DÜZELTME: Türkiye operatör SMS center'ları - sırayla dene
         String smsCenters[] = {
-            "+902322455667",  // Turkcell 1
-            "+902324455667",  // Turkcell 2  
-            "+905001000000",  // Vodafone
-            "+905007770000",  // Türk Telekom
-            "+902165454500",  // Avea/Türk Telekom 2
+            "+902322455667",
+            "+902324455667",
+            "+905001000000",
+            "+905007770000",
+            "+902165454500",
         };
         
         bool smscSet = false;
         for (int i = 0; i < 5; i++) {
             Serial.println("Trying SMS center [" + String(i+1) + "/5]: " + smsCenters[i]);
             
-            // SMS center set et
             gsmSerial.println("AT+CSCA=\"" + smsCenters[i] + "\"");
             delay(2000);
             
@@ -902,9 +897,8 @@ void sendSMSAlert(String message) {
             }
             
             if (setResponse.indexOf("OK") >= 0) {
-                Serial.println("✅ SMS center set: " + smsCenters[i]);
+                Serial.println("SMS center set: " + smsCenters[i]);
                 
-                // Test SMS gönder (kendi numarana)
                 Serial.println("Testing SMS center with test message...");
                 gsmSerial.println("AT+CMGS=\"" + alertPhoneNumber + "\"");
                 delay(5000);
@@ -926,32 +920,31 @@ void sendSMSAlert(String message) {
                 }
                 
                 if (gotTestPrompt) {
-                    Serial.println("✅ SMS center working! Proceeding...");
-                    gsmSerial.write(26); // Cancel test
+                    Serial.println("SMS center working! Proceeding...");
+                    gsmSerial.write(26);
                     delay(1000);
-                    while (gsmSerial.available()) gsmSerial.read(); // Clean buffer
+                    while (gsmSerial.available()) gsmSerial.read();
                     smscSet = true;
                     break;
                 } else {
-                    Serial.println("❌ SMS center not working, trying next...");
-                    gsmSerial.write(26); // Cancel
+                    Serial.println("SMS center not working, trying next...");
+                    gsmSerial.write(26);
                     delay(1000);
                     while (gsmSerial.available()) gsmSerial.read();
                 }
             } else {
-                Serial.println("❌ Failed to set SMS center: " + smsCenters[i]);
+                Serial.println("Failed to set SMS center: " + smsCenters[i]);
             }
         }
         
         if (!smscSet) {
-            Serial.println("❌ NO WORKING SMS CENTER FOUND - SMS FAILED");
+            Serial.println("NO WORKING SMS CENTER FOUND - SMS FAILED");
             return;
         }
     } else {
-        Serial.println("✅ Using existing SMS center");
+        Serial.println("Using existing SMS center");
     }
     
-    // DÜZELTME: SMS text mode
     Serial.println("Setting SMS text mode...");
     gsmSerial.println("AT+CMGF=1");
     delay(2000);
@@ -962,18 +955,16 @@ void sendSMSAlert(String message) {
     }
     
     if (cmgfResponse.indexOf("OK") < 0) {
-        Serial.println("❌ Failed to set SMS text mode");
+        Serial.println("Failed to set SMS text mode");
         return;
     }
     
-    // DÜZELTME: Gerçek SMS gönderimi - daha kısa timeout
     Serial.println("Sending SMS to: " + alertPhoneNumber);
     
     gsmSerial.print("AT+CMGS=\"");
     gsmSerial.print(alertPhoneNumber);
     gsmSerial.println("\"");
     
-    // Prompt bekle - DÜZELTME: 8 saniye timeout
     String promptResponse = "";
     unsigned long promptTimeout = millis() + 8000;
     bool gotPrompt = false;
@@ -984,7 +975,7 @@ void sendSMSAlert(String message) {
             promptResponse += c;
             if (c == '>') {
                 gotPrompt = true;
-                Serial.println("\n✅ Got SMS prompt!");
+                Serial.println("\nGot SMS prompt!");
                 break;
             }
         }
@@ -992,11 +983,10 @@ void sendSMSAlert(String message) {
     }
     
     if (!gotPrompt) {
-        Serial.println("❌ No SMS prompt - ABORTING");
+        Serial.println("No SMS prompt - ABORTING");
         return;
     }
     
-    // Mesaj gönder
     String shortMessage = message;
     if (message.length() > 140) {
         shortMessage = message.substring(0, 137) + "...";
@@ -1004,9 +994,8 @@ void sendSMSAlert(String message) {
     
     gsmSerial.print(shortMessage);
     delay(500);
-    gsmSerial.write(26); // Ctrl+Z
+    gsmSerial.write(26);
     
-    // DÜZELTME: Çok kısa delivery timeout - 15 saniye
     String finalResponse = "";
     unsigned long deliveryTimeout = millis() + 15000;
     bool success = false;
@@ -1018,12 +1007,12 @@ void sendSMSAlert(String message) {
             
             if (finalResponse.indexOf("+CMGS:") >= 0) {
                 success = true;
-                Serial.println("\n✅ SMS SENT SUCCESSFULLY!");
+                Serial.println("\nSMS SENT SUCCESSFULLY!");
                 break;
             }
             
             if (finalResponse.indexOf("ERROR") >= 0) {
-                Serial.println("\n❌ SMS ERROR: " + finalResponse);
+                Serial.println("\nSMS ERROR: " + finalResponse);
                 break;
             }
         }
@@ -1031,12 +1020,11 @@ void sendSMSAlert(String message) {
     }
     
     if (success) {
-        Serial.println("📱 SMS delivered successfully!");
+        Serial.println("SMS delivered successfully!");
         lastSMSAlertTime = millis();
     } else {
-        Serial.println("❌ SMS FAILED - Response: " + finalResponse);
+        Serial.println("SMS FAILED - Response: " + finalResponse);
         
-        // DÜZELTME: Detaylı hata analizi
         if (finalResponse.indexOf("CMS ERROR") >= 0) {
             Serial.println("DIAGNOSIS: SMS service error - check SIM credit/SMS center");
         } else if (finalResponse.indexOf("CME ERROR") >= 0) {
@@ -1048,7 +1036,6 @@ void sendSMSAlert(String message) {
         }
     }
     
-    // Cleanup
     while (gsmSerial.available()) {
         gsmSerial.read();
     }
@@ -1065,10 +1052,11 @@ void checkUDPPackets() {
             incomingPacket[len] = 0;
             String command = String(incomingPacket);
             
-            // Sadece önemli UDP komutlarını log et
             bool shouldLog = command.startsWith("ALARM") || command == "PING_TEST" ||
                            command == "GET_GSM_STATUS" || command == "SILENCE_ALARM" ||
-                           command == "REQUEST_SMS";
+                           command == "REQUEST_SMS" || command == "REQUEST_GPS" ||
+                           command.startsWith("SET_THRESHOLD") || command.startsWith("INIT_THRESHOLD") ||
+                           command == "START_TRACKING" || command == "STOP_TRACKING";
             
             if (shouldLog) {
                 Serial.printf("UDP Command: %s\n", command.c_str());
@@ -1076,8 +1064,6 @@ void checkUDPPackets() {
             
             String response = "";
             
-            // Process UDP commands
-
             if (command == "SILENCE_ALARM") {
                 Serial.println("SILENCE_ALARM command received via UDP");
                 silenceAlarmPermanent();
@@ -1099,6 +1085,20 @@ void checkUDPPackets() {
                 }
             }
             
+            else if (command.startsWith("SET_THRESHOLD;")) {
+                int semicolonIndex = command.indexOf(';');
+                if (semicolonIndex > 0) {
+                    String thresholdStr = command.substring(semicolonIndex + 1);
+                    int newThreshold = thresholdStr.toInt();
+                    
+                    if (newThreshold >= -100 && newThreshold <= -30) {
+                        rssiThreshold = newThreshold;
+                        Serial.printf("Distance threshold updated via WiFi: %d dBm\n", rssiThreshold);
+                        response = "THRESHOLD_SET;" + String(rssiThreshold);
+                    }
+                }
+            }
+            
             else if (command == "ALARM_ON") {
                 alarmEnabled = true;
                 Serial.println("Alarm system ENABLED via UDP");
@@ -1110,18 +1110,29 @@ void checkUDPPackets() {
                 Serial.println("Alarm system DISABLED via UDP");
                 response = "ALARM_STATUS;DISABLED";
             }
-            // DÜZELTME: UDP üzerinden silence alarm
-            else if (command == "SILENCE_ALARM") {
-                Serial.println("SILENCE_ALARM command received via UDP");
-                stopBuzzer();
-                response = "ALARM_SILENCED";
-                Serial.println("Alarm silenced via UDP - response sent");
+            else if (command == "START_TRACKING") {
+                trackingEnabled = true;
+                Serial.println("Tracking ENABLED via UDP");
+                response = "TRACKING_STATUS;ENABLED";
             }
-            // DÜZELTME: UDP üzerinden SMS request
+            else if (command == "STOP_TRACKING") {
+                trackingEnabled = false;
+                Serial.println("Tracking DISABLED via UDP");
+                response = "TRACKING_STATUS;DISABLED";
+            }
+            else if (command == "REQUEST_GPS") {
+                response = "GPS_DATA;";
+                if (gpsFixed) {
+                    response += "LAT=" + String(lastLat, 6) + ";LON=" + String(lastLon, 6);
+                } else {
+                    response += "NO_FIX";
+                }
+                Serial.println("GPS data sent via UDP");
+            }
             else if (command == "REQUEST_SMS") {
                 Serial.println("SMS requested via UDP - forcing send");
                 if (checkGSMStatus()) {
-                    String smsMsg = "SMART TRACKER STATUS: Your item is safe. ";
+                    String smsMsg = "SmartTracker STATUS: Your item is safe. ";
                     if (gpsFixed) {
                         smsMsg += "Location: https://maps.google.com/?q=" + String(lastLat, 6) + "," + String(lastLon, 6);
                     } else {
@@ -1147,7 +1158,6 @@ void checkUDPPackets() {
                 response = "UNKNOWN_COMMAND";
             }
             
-            // Send response
             udp.beginPacket(udp.remoteIP(), udp.remotePort());
             udp.print(response);
             udp.endPacket();
@@ -1156,7 +1166,7 @@ void checkUDPPackets() {
 }
 
 void printDetailedStatus() {
-    Serial.println("\n=== SYSTEM STATUS (5 min interval) ===");
+    Serial.println("\n=== SYSTEM STATUS ===");
     Serial.printf("State: %s\n", getStateName(currentState).c_str());
     Serial.printf("BLE: %s", bleConnected ? "Connected" : "Searching");
     if (bleConnected) {
@@ -1171,13 +1181,14 @@ void printDetailedStatus() {
     }
     Serial.println();
     Serial.printf("Alarm: %s", alarmEnabled ? (buzzerActive ? "ACTIVE" : "ENABLED") : "DISABLED");
+    Serial.printf(" | Tracking: %s", trackingEnabled ? "ENABLED" : "DISABLED");
     if (alarmEnabled) {
         Serial.printf(" | Threshold: %d dBm", rssiThreshold);
     }
     Serial.println();
     Serial.printf("Uptime: %lu minutes | Free heap: %d bytes\n", 
                  millis() / 60000, ESP.getFreeHeap());
-    Serial.println("=====================================\n");
+    Serial.println("====================\n");
 }
 
 String getStateName(TrackerState state) {
