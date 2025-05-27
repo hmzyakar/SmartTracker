@@ -92,6 +92,38 @@ const unsigned long SLEEP_DURATION = 30000;
 const unsigned long GPS_READ_INTERVAL = 20000;
 const unsigned long STATUS_PRINT_INTERVAL = 300000;
 
+// BLE message sending helper function
+void sendBLEMessage(String message) {
+    if (!bleConnected || !pAlertChar) return;
+    
+    // BLE has ~20 byte MTU limit, so split long messages
+    const int MAX_BLE_LENGTH = 18;
+    
+    if (message.length() <= MAX_BLE_LENGTH) {
+        pAlertChar->setValue(message.c_str());
+        pAlertChar->notify();
+    } else {
+        // Send in chunks for long messages like GPS data
+        int totalChunks = (message.length() + MAX_BLE_LENGTH - 1) / MAX_BLE_LENGTH;
+        
+        for (int i = 0; i < totalChunks; i++) {
+            String chunk;
+            if (i == 0) {
+                // First chunk includes total count
+                chunk = "PART:" + String(i+1) + "/" + String(totalChunks) + ":" + 
+                       message.substring(i * MAX_BLE_LENGTH, min((i+1) * MAX_BLE_LENGTH, (int)message.length()));
+            } else {
+                chunk = "PART:" + String(i+1) + "/" + String(totalChunks) + ":" + 
+                       message.substring(i * MAX_BLE_LENGTH, min((i+1) * MAX_BLE_LENGTH, (int)message.length()));
+            }
+            
+            pAlertChar->setValue(chunk.c_str());
+            pAlertChar->notify();
+            delay(100); // Small delay between chunks
+        }
+    }
+}
+
 void silenceAlarmPermanent() {
     buzzerActive = false;
     alarmTriggered = false;
@@ -177,28 +209,23 @@ void updateLEDStatus() {
 }
 
 bool checkDistanceAlert() {
-    // Don't check alerts if not connected, calibrating, or tracking disabled
     if (!bleConnected || !deviceConnected || distanceCalibrating || !trackingEnabled) {
         return false;
     }
     
-    // Don't alert if threshold not properly set
     if (rssiThreshold < -200) {
         return false;
     }
     
-    // Check if we have recent RSSI data
     if (millis() - lastRssiUpdate > RSSI_TIMEOUT) {
         return false;
     }
     
-    // Main alert condition: RSSI below threshold
     if (currentRSSI < rssiThreshold) {
-        // Only log alert detection occasionally to reduce spam
         static unsigned long lastAlertLog = 0;
         unsigned long currentTime = millis();
         
-        if (currentTime - lastAlertLog > 10000) { // Log every 10 seconds max
+        if (currentTime - lastAlertLog > 10000) {
             Serial.printf("DISTANCE ALERT! RSSI: %d < %d | Tracking: %s | Alarm: %s\n", 
                          currentRSSI, rssiThreshold, trackingEnabled ? "ON" : "OFF", alarmEnabled ? "ON" : "OFF");
             lastAlertLog = currentTime;
@@ -251,7 +278,6 @@ class MyServerCallbacks: public BLEServerCallbacks {
         Serial.println("BLE Client disconnected!");
         
         if (trackingEnabled) {
-            // Check if alarm should trigger (not silenced)
             if (alarmEnabled && !isAlarmSilenced()) {
                 startBuzzer();
                 Serial.println("BLE disconnect - alarm triggered");
@@ -297,8 +323,7 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         Serial.printf("Initial threshold set from app: %d dBm\n", rssiThreshold);
                         
                         String response = "THRESHOLD_INITIALIZED;" + String(rssiThreshold);
-                        pAlertChar->setValue(response.c_str());
-                        pAlertChar->notify();
+                        sendBLEMessage(response);
                     }
                 }
             }
@@ -312,7 +337,6 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         rssiThreshold = newThreshold;
                         Serial.printf("Distance threshold updated: %d dBm\n", rssiThreshold);
                         
-                        // CRITICAL: Automatically stop test when threshold is set manually
                         if (rssiTestMode || distanceCalibrating) {
                             rssiTestMode = false;
                             distanceCalibrating = false;
@@ -320,8 +344,7 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         }
                         
                         String response = "THRESHOLD_SET;" + String(rssiThreshold);
-                        pAlertChar->setValue(response.c_str());
-                        pAlertChar->notify();
+                        sendBLEMessage(response);
                     }
                 }
             }
@@ -329,24 +352,18 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                 rssiTestMode = true;
                 distanceCalibrating = true;
                 Serial.println("RSSI distance test STARTED - alerts disabled");
-                String response = "RSSI_TEST_STARTED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("RSSI_TEST_STARTED");
             }
             else if (value == "STOP_RSSI_TEST") {
                 rssiTestMode = false;
                 distanceCalibrating = false;
                 Serial.println("RSSI distance test STOPPED - alerts enabled");
-                String response = "RSSI_TEST_STOPPED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("RSSI_TEST_STOPPED");
             }
             else if (value == "SILENCE_ALARM") {
                 Serial.println("SILENCE_ALARM command received via BLE");
                 silenceAlarmPermanent();
-                String response = "ALARM_SILENCED;5_MINUTES";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("ALARM_SILENCED;5_MINUTES");
                 Serial.println("Alarm silenced for 5 minutes via BLE");
             }
             else if (value.startsWith("ANDROID_RSSI;")) {
@@ -362,13 +379,12 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                         if (rssiTestMode || distanceCalibrating) {
                             Serial.printf("RSSI updated: %d dBm (testing)\n", androidRSSI);
                         } else {
-                            // Only log RSSI changes or important status changes
                             static int lastLoggedRSSI = 0;
                             static unsigned long lastRSSILog = 0;
                             
-                            bool shouldLog = (abs(androidRSSI - lastLoggedRSSI) >= 2) || // 2dBm change
-                                           (millis() - lastRSSILog > 30000) || // Every 30 seconds
-                                           ((androidRSSI <= rssiThreshold) != (lastLoggedRSSI <= rssiThreshold)); // Status change
+                            bool shouldLog = (abs(androidRSSI - lastLoggedRSSI) >= 2) ||
+                                           (millis() - lastRSSILog > 30000) ||
+                                           ((androidRSSI <= rssiThreshold) != (lastLoggedRSSI <= rssiThreshold));
                             
                             if (shouldLog) {
                                 String status = (androidRSSI > rssiThreshold) ? "SAFE" : "ALERT_ZONE";
@@ -384,43 +400,37 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
             else if (value == "START_TRACKING") {
                 trackingEnabled = true;
                 Serial.println(">> Tracking ENABLED via BLE <<");
-                String response = "TRACKING_STATUS;ENABLED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("TRACKING_STATUS;ENABLED");
             }
             else if (value == "STOP_TRACKING") {
                 trackingEnabled = false;
                 Serial.println(">> Tracking DISABLED via BLE <<");
-                String response = "TRACKING_STATUS;DISABLED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("TRACKING_STATUS;DISABLED");
             }
             else if (value == "REQUEST_GPS") {
                 String response = "GPS_DATA;";
                 if (gpsFixed) {
+                    // Format GPS data properly for BLE
                     response += "LAT=" + String(lastLat, 6) + ";LON=" + String(lastLon, 6);
+                    Serial.printf("GPS data sent via BLE: %.6f, %.6f\n", lastLat, lastLon);
                 } else {
                     response += "NO_FIX";
+                    Serial.println("GPS data sent via BLE: No fix");
                 }
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
-                Serial.println("GPS data sent via BLE");
+                sendBLEMessage(response);
             }
             else if (value == "PING") {
                 String response = "PONG";
                 if (gpsFixed) {
                     response += ";LAT=" + String(lastLat, 6) + ";LON=" + String(lastLon, 6);
                 }
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage(response);
             }
             else if (value == "ALARM_ON") {
                 alarmEnabled = true;
                 alarmSilenced = false;
                 Serial.println("Alarm system ENABLED via BLE");
-                String response = "ALARM_STATUS;ENABLED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("ALARM_STATUS;ENABLED");
             }
             else if (value == "ALARM_OFF") {
                 alarmEnabled = false;
@@ -428,9 +438,7 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
                 alarmTriggered = false;
                 digitalWrite(BUZZER_PIN, LOW);
                 Serial.println("Alarm system DISABLED via BLE");
-                String response = "ALARM_STATUS;DISABLED";
-                pAlertChar->setValue(response.c_str());
-                pAlertChar->notify();
+                sendBLEMessage("ALARM_STATUS;DISABLED");
             }
         }
     }
@@ -524,7 +532,6 @@ void processStateMachine() {
             if (!bleConnected) {
                 Serial.println("BLE: Connection lost");
                 if (trackingEnabled) {
-                    // Check silence before triggering alarm
                     if (alarmEnabled && !isAlarmSilenced()) {
                         startBuzzer();
                     }
@@ -538,12 +545,10 @@ void processStateMachine() {
                 }
                 stateStart = currentTime;
             } else if (trackingEnabled && checkDistanceAlert()) {
-                // Alert cooldown per state cycle - more flexible
                 Serial.printf("Distance alert detected! Tracking: %s, Alarm: %s, Silenced: %s\n", 
                             trackingEnabled ? "ON" : "OFF", alarmEnabled ? "ON" : "OFF", 
                             isAlarmSilenced() ? "YES" : "NO");
                 
-                // Only trigger buzzer if not silenced
                 if (alarmEnabled && !isAlarmSilenced()) {
                     startBuzzer();
                 }
@@ -556,19 +561,16 @@ void processStateMachine() {
             if (bleConnected && trackingEnabled) {
                 unsigned long currentTime = millis();
                 
-                // BLE alert with cooldown
                 if (currentTime - lastBLEAlertTime > BLE_ALERT_COOLDOWN) {
                     String alertMsg = "ALERT: Device moved away! RSSI: " + String(currentRSSI) + " < " + String(rssiThreshold);
                     if (gpsFixed) {
                         alertMsg += " Location: " + String(lastLat, 6) + "," + String(lastLon, 6);
                     }
-                    pAlertChar->setValue(alertMsg.c_str());
-                    pAlertChar->notify();
+                    sendBLEMessage(alertMsg);
                     Serial.println("BLE alert sent: " + alertMsg);
                     lastBLEAlertTime = currentTime;
                 }
                 
-                // Return to CHECK_DISTANCE after sending alert
                 currentState = CHECK_DISTANCE;
                 stateStart = currentTime;
             } else {
@@ -1124,10 +1126,11 @@ void checkUDPPackets() {
                 response = "GPS_DATA;";
                 if (gpsFixed) {
                     response += "LAT=" + String(lastLat, 6) + ";LON=" + String(lastLon, 6);
+                    Serial.printf("GPS data sent via UDP: %.6f, %.6f\n", lastLat, lastLon);
                 } else {
                     response += "NO_FIX";
+                    Serial.println("GPS data sent via UDP: No fix");
                 }
-                Serial.println("GPS data sent via UDP");
             }
             else if (command == "REQUEST_SMS") {
                 Serial.println("SMS requested via UDP - forcing send");

@@ -73,7 +73,7 @@ class MainActivity : Activity() {
     private var rssiThreshold = -70
     private val rssiUpdateHandler = Handler(Looper.getMainLooper())
     private val wifiCheckHandler = Handler(Looper.getMainLooper())
-    private val WIFI_CHECK_INTERVAL = 15000L // 15 saniyede bir WiFi kontrolü
+    private val WIFI_CHECK_INTERVAL = 15000L
 
     private val debugMessages = ConcurrentLinkedQueue<String>()
     private val maxDebugMessages = 25
@@ -113,7 +113,8 @@ class MainActivity : Activity() {
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.POST_NOTIFICATIONS,
             Manifest.permission.WAKE_LOCK,
-            Manifest.permission.READ_PHONE_STATE
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.SEND_SMS
         )
     } else {
         arrayOf(
@@ -121,7 +122,8 @@ class MainActivity : Activity() {
             Manifest.permission.BLUETOOTH_ADMIN,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.WAKE_LOCK,
-            Manifest.permission.READ_PHONE_STATE
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.SEND_SMS
         )
     }
 
@@ -150,8 +152,6 @@ class MainActivity : Activity() {
         addDebugLog("SmartTracker - Initialized")
         updateConnectionStatus()
         checkSystemConnections()
-
-        // Start periodic WiFi health check
         startPeriodicWiFiCheck()
     }
 
@@ -216,10 +216,15 @@ class MainActivity : Activity() {
 
         startButton = findViewById<Button>(R.id.startButton)?.apply {
             setOnClickListener {
-                showToast("Starting tracking system...")
-                startTracking()
+                if (hasAnyConnection()) {
+                    showToast("Starting tracking system...")
+                    startTracking()
+                } else {
+                    showToast("No connection available - please connect first")
+                    addDebugLog("Start tracking blocked - no connection")
+                }
             }
-            isEnabled = false
+            isEnabled = false // Start disabled
         }
 
         stopButton = findViewById<Button>(R.id.stopButton)?.apply {
@@ -282,29 +287,40 @@ class MainActivity : Activity() {
             isEnabled = false
         }
 
-        retryBleButton = findViewById<Button>(R.id.retryBleButton)?.apply {
+        // Add SMS GPS request button
+        findViewById<Button>(R.id.requestGpsSmsButton)?.apply {
             setOnClickListener {
-                showToast("Retrying BLE connection...")
+                showToast("Requesting GPS via SMS...")
+                requestGPSviaSMS()
+            }
+        }
+
+        retryBleButton = findViewById<Button>(R.id.retryBleButton)?.apply {
+            text = "CONNECT BLE"
+            setOnClickListener {
+                showToast("Connecting via BLE...")
                 retryConnection("bluetooth")
             }
         }
 
         retryWifiButton = findViewById<Button>(R.id.retryWifiButton)?.apply {
+            text = "CONNECT WiFi"
             setOnClickListener {
-                if (wifiConnected) {
-                    showToast("Requesting location SMS...")
-                    requestLocationSMS()
-                } else {
-                    showToast("Testing WiFi connection...")
-                    retryConnection("wifi")
-                }
+                showToast("Testing WiFi connection...")
+                retryConnection("wifi")
             }
         }
 
         retryGsmButton = findViewById<Button>(R.id.retryGsmButton)?.apply {
+            text = "TEST GSM"
             setOnClickListener {
-                showToast("Testing GSM connection...")
-                retryConnection("gsm")
+                if (hasAnyConnection()) {
+                    showToast("Testing GSM via connected interface...")
+                    retryConnection("gsm")
+                } else {
+                    showToast("No connection available for GSM test")
+                    addDebugLog("GSM test requires BLE or WiFi connection")
+                }
             }
         }
 
@@ -315,8 +331,15 @@ class MainActivity : Activity() {
         addDebugLog("UI components initialized with popup notifications")
     }
 
+    private fun hasAnyConnection(): Boolean {
+        return bleConnected || wifiConnected
+    }
+
     private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        // Use shorter duration
+        val toast = Toast.makeText(this, message, Toast.LENGTH_SHORT)
+        toast.duration = Toast.LENGTH_SHORT
+        toast.show()
     }
 
     private fun requestGPSLocation() {
@@ -332,6 +355,20 @@ class MainActivity : Activity() {
         }
     }
 
+    // New function for SMS GPS request (independent of connections)
+    private fun requestGPSviaSMS() {
+        try {
+            val smsManager = android.telephony.SmsManager.getDefault()
+            val esp32PhoneNumber = "+905063510837" // ESP32'deki SIM
+            smsManager.sendTextMessage(esp32PhoneNumber, null, "LOCATION", null, null)
+            addDebugLog("GPS location requested via SMS to ESP32: $esp32PhoneNumber")
+            showToast("📱 GPS location requested via SMS to ESP32")
+        } catch (e: Exception) {
+            addDebugLog("SMS GPS request error: ${e.message}")
+            showToast("SMS sending failed")
+        }
+    }
+
     private fun sendThresholdUpdate() {
         val command = "SET_THRESHOLD;$rssiThreshold"
         if (bleConnected) {
@@ -340,19 +377,6 @@ class MainActivity : Activity() {
         } else if (wifiConnected) {
             sendUDPCommand(command)
             addDebugLog("Threshold sent via WiFi: $rssiThreshold dBm")
-        }
-    }
-
-    private fun requestLocationSMS() {
-        if (bleConnected) {
-            sendBLECommand("REQUEST_SMS")
-            addDebugLog("Location SMS requested via BLE")
-        } else if (wifiConnected) {
-            sendUDPCommand("REQUEST_SMS")
-            addDebugLog("Location SMS requested via WiFi")
-        } else {
-            showToast("No connection available for SMS request")
-            addDebugLog("SMS request failed - no connection")
         }
     }
 
@@ -429,13 +453,25 @@ class MainActivity : Activity() {
 
             runOnUiThread {
                 updateConnectionStatus()
-                updateButtonLabels()
+                updateButtonStates()
             }
         }.start()
     }
 
-    private fun updateButtonLabels() {
-        retryWifiButton?.text = if (wifiConnected) "REQUEST SMS" else "TEST WiFi"
+    private fun updateButtonStates() {
+        // Update button states based on connections
+        startButton?.isEnabled = hasAnyConnection() && !isTrackingEnabled
+        stopButton?.isEnabled = isTrackingEnabled
+        requestGpsButton?.isEnabled = hasAnyConnection()
+        rssiTestButton?.isEnabled = bleConnected
+
+        // Update retry button texts
+        retryBleButton?.text = if (bleConnected) "✓ BLE CONNECTED" else "CONNECT BLE"
+        retryWifiButton?.text = if (wifiConnected) "✓ WiFi CONNECTED" else "CONNECT WiFi"
+
+        // Enable/disable retry buttons
+        retryBleButton?.isEnabled = !bleConnected
+        retryWifiButton?.isEnabled = !wifiConnected
     }
 
     private fun toggleAlarm(enabled: Boolean) {
@@ -479,7 +515,6 @@ class MainActivity : Activity() {
             addDebugLog("Silence command sent via SMS")
         }
 
-        // CRITICAL: Always update local state immediately
         isAlarmActive = false
         updateAlarmUI()
         updateStatus("Alarm silenced for 5 minutes")
@@ -490,7 +525,6 @@ class MainActivity : Activity() {
             else -> "SMS"
         }}")
 
-        // Force stop any local alarm indicators
         handler.postDelayed({
             isAlarmActive = false
             updateAlarmUI()
@@ -539,17 +573,31 @@ class MainActivity : Activity() {
 
     private fun updateTrackingUI() {
         runOnUiThread {
-            // Always show static button text - don't change based on state
+            // Static button text
             startButton?.text = "START TRACKING"
             stopButton?.text = "STOP TRACKING"
 
-            // Color changes to indicate state
+            // Update button colors and states
             if (isTrackingEnabled) {
-                startButton?.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_green_dark))
-                stopButton?.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+                // Tracking is ON
+                startButton?.apply {
+                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                    isEnabled = false // Disable start when tracking
+                }
+                stopButton?.apply {
+                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark))
+                    isEnabled = true // Enable stop when tracking
+                }
             } else {
-                startButton?.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
-                stopButton?.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                // Tracking is OFF
+                startButton?.apply {
+                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.holo_green_dark))
+                    isEnabled = hasAnyConnection() // Enable only if connected
+                }
+                stopButton?.apply {
+                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                    isEnabled = false // Disable stop when not tracking
+                }
             }
         }
     }
@@ -584,11 +632,11 @@ class MainActivity : Activity() {
                 bleConnected -> "PRIMARY: BLE Connected"
                 wifiConnected -> "BACKUP: WiFi Available"
                 gsmConnected -> "EMERGENCY: GSM Ready"
-                else -> "ALL OFFLINE"
+                else -> "ALL OFFLINE - Please connect"
             }
             connectionStatusCard?.text = overallStatus
 
-            requestGpsButton?.isEnabled = bleConnected || wifiConnected
+            updateButtonStates()
         }
     }
 
@@ -668,18 +716,12 @@ class MainActivity : Activity() {
             rssiThreshold = currentRssi
             savePreferences()
 
-            // CRITICAL: First stop the test, then send threshold
             stopRssiTest()
 
-            // Small delay to ensure stop command is processed
             handler.postDelayed({
-                // Send threshold to ESP32
                 sendBLECommand("SET_THRESHOLD;$rssiThreshold")
-
-                // Update UI
                 updateRssiDisplay()
 
-                // Update spinner to match new threshold
                 val thresholdIndex = thresholdOptions.indexOf(rssiThreshold)
                 if (thresholdIndex >= 0) {
                     thresholdSpinner?.setSelection(thresholdIndex)
@@ -687,7 +729,7 @@ class MainActivity : Activity() {
 
                 addDebugLog("Distance threshold set: $oldThreshold → $rssiThreshold dBm")
                 showToast("Alert distance updated: $rssiThreshold dBm (was $oldThreshold dBm)")
-            }, 200) // 200ms delay to ensure proper sequencing
+            }, 200)
 
         } else {
             addDebugLog("Invalid RSSI for threshold: $currentRssi")
@@ -698,11 +740,10 @@ class MainActivity : Activity() {
     private fun startPeriodicWiFiCheck() {
         wifiCheckHandler.postDelayed({
             if (wifiConnected) {
-                // WiFi bağlıysa ping test gönder
                 Thread {
                     try {
                         val socket = DatagramSocket()
-                        socket.soTimeout = 3000 // Kısa timeout
+                        socket.soTimeout = 3000
 
                         val address = InetAddress.getByName("192.168.4.1")
                         val buffer = "PING_TEST".toByteArray()
@@ -716,16 +757,13 @@ class MainActivity : Activity() {
                         socket.receive(responsePacket)
                         socket.close()
 
-                        // Başarılı - WiFi hala bağlı
                         addDebugLog("WiFi health check: OK")
 
                     } catch (e: Exception) {
-                        // Başarısız - WiFi kopmuş
                         runOnUiThread {
                             if (wifiConnected) {
                                 wifiConnected = false
                                 updateConnectionStatus()
-                                updateButtonLabels()
                                 addDebugLog("WiFi health check failed - connection lost")
                             }
                         }
@@ -733,7 +771,6 @@ class MainActivity : Activity() {
                 }.start()
             }
 
-            // Tekrar schedule et
             startPeriodicWiFiCheck()
         }, WIFI_CHECK_INTERVAL)
     }
@@ -757,7 +794,6 @@ class MainActivity : Activity() {
                 rssiText = "Current: ${currentRssi} dBm ($signalQuality) | Alert: ${rssiThreshold} dBm"
                 setThresholdButton?.isEnabled = true
             } else if (currentRssi != 0) {
-                // Show current RSSI even when not testing
                 val status = if (currentRssi > rssiThreshold) "SAFE" else "⚠️ ALERT ZONE"
                 rssiText = "Current: ${currentRssi} dBm ($status) | Alert Distance: ${rssiThreshold} dBm"
             } else {
@@ -800,7 +836,6 @@ class MainActivity : Activity() {
 
             "wifi" -> {
                 checkSystemConnections()
-                // Force a WiFi connectivity test
                 Thread {
                     try {
                         val socket = DatagramSocket()
@@ -818,12 +853,10 @@ class MainActivity : Activity() {
                         socket.receive(responsePacket)
                         socket.close()
 
-                        // Success
                         runOnUiThread {
                             if (!wifiConnected) {
                                 wifiConnected = true
                                 updateConnectionStatus()
-                                updateButtonLabels()
                                 showToast("WiFi connection restored!")
                                 addDebugLog("WiFi manual test successful")
                             } else {
@@ -832,11 +865,9 @@ class MainActivity : Activity() {
                         }
 
                     } catch (e: Exception) {
-                        // Failed
                         runOnUiThread {
                             wifiConnected = false
                             updateConnectionStatus()
-                            updateButtonLabels()
                             showToast("WiFi test failed - check ESP32 AP")
                             addDebugLog("WiFi manual test failed: ${e.message}")
                         }
@@ -846,8 +877,11 @@ class MainActivity : Activity() {
 
             "gsm" -> {
                 checkSystemConnections()
-                sendBLECommand("GET_GSM_STATUS")
-                sendUDPCommand("GET_GSM_STATUS")
+                if (bleConnected) {
+                    sendBLECommand("GET_GSM_STATUS")
+                } else if (wifiConnected) {
+                    sendUDPCommand("GET_GSM_STATUS")
+                }
             }
         }
     }
@@ -901,12 +935,10 @@ class MainActivity : Activity() {
                     val response = String(responsePacket.data, 0, responsePacket.length)
                     addDebugLog("UDP → $command ← $response")
 
-                    // WiFi is working if we got a response
                     if (!wifiConnected) {
                         wifiConnected = true
                         runOnUiThread {
                             updateConnectionStatus()
-                            updateButtonLabels()
                             addDebugLog("WiFi connection restored")
                         }
                     }
@@ -916,7 +948,6 @@ class MainActivity : Activity() {
                     }
                 } catch (e: Exception) {
                     addDebugLog("UDP → $command (sent, no response)")
-                    // No response doesn't necessarily mean WiFi is down
                 }
 
                 socket.close()
@@ -925,7 +956,6 @@ class MainActivity : Activity() {
                     wifiConnected = true
                     runOnUiThread {
                         updateConnectionStatus()
-                        updateButtonLabels()
                     }
                     startWiFiAlertListener()
                 }
@@ -933,12 +963,10 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 addDebugLog("UDP error: ${e.message}")
 
-                // WiFi connection failed - mark as disconnected
                 if (wifiConnected) {
                     wifiConnected = false
                     runOnUiThread {
                         updateConnectionStatus()
-                        updateButtonLabels()
                         addDebugLog("WiFi connection lost - UDP failed")
                     }
                 }
@@ -990,21 +1018,7 @@ class MainActivity : Activity() {
                 }
             }
             response.startsWith("GPS_DATA") -> {
-                val parts = response.split(";")
-                if (parts.size > 1) {
-                    if (parts[1] == "NO_FIX") {
-                        updateGpsStatus("GPS: No fix available")
-                        showToast("📍 GPS: No satellite fix")
-                    } else {
-                        val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(response)
-                        if (locationMatch != null) {
-                            val lat = locationMatch.groupValues[1]
-                            val lon = locationMatch.groupValues[2]
-                            updateGpsStatus("GPS: $lat, $lon")
-                            showToast("📍 GPS location received")
-                        }
-                    }
-                }
+                processGPSData(response, "WiFi")
             }
             response.startsWith("SMS_SENT") -> {
                 showToast("📱 Location SMS sent successfully")
@@ -1018,6 +1032,61 @@ class MainActivity : Activity() {
                 updateConnectionStatus()
                 showToast("GSM Status: $status")
             }
+        }
+    }
+
+    private fun processGPSData(gpsData: String, source: String) {
+        val parts = gpsData.split(";")
+        if (parts.size > 1) {
+            if (parts[1] == "NO_FIX") {
+                val status = "GPS: No fix available"
+                updateGpsStatus(status)
+                addDebugLog("$source GPS: No satellite fix")
+                showToast("📍 GPS: No satellite fix")
+            } else {
+                // Extract coordinates
+                val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(gpsData)
+                if (locationMatch != null) {
+                    val lat = locationMatch.groupValues[1]
+                    val lon = locationMatch.groupValues[2]
+
+                    // Format consistently
+                    val status = "GPS: $lat, $lon"
+                    val mapsUrl = "https://maps.google.com/?q=$lat,$lon"
+
+                    updateGpsStatus(status)
+                    addDebugLog("$source GPS: $lat, $lon")
+                    addDebugLog("$source Maps: $mapsUrl")
+
+                    // Show clickable toast with coordinates
+                    showToast("📍 GPS received: $lat, $lon")
+
+                    // Optional: Auto-open maps (uncomment if desired)
+                    // openGoogleMaps(lat, lon)
+                }
+            }
+        }
+    }
+
+    private fun openGoogleMaps(lat: String, lon: String) {
+        try {
+            val gmmIntentUri = android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon")
+            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+            mapIntent.setPackage("com.google.android.apps.maps")
+
+            if (mapIntent.resolveActivity(packageManager) != null) {
+                startActivity(mapIntent)
+                addDebugLog("Google Maps opened for location: $lat, $lon")
+            } else {
+                // Fallback to browser
+                val browserIntent = Intent(Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://maps.google.com/?q=$lat,$lon"))
+                startActivity(browserIntent)
+                addDebugLog("Location opened in browser: $lat, $lon")
+            }
+        } catch (e: Exception) {
+            addDebugLog("Error opening maps: ${e.message}")
+            showToast("Error opening location")
         }
     }
 
@@ -1049,17 +1118,13 @@ class MainActivity : Activity() {
                             }
                         }
                     } catch (e: Exception) {
-                        // Timeout normal, continue listening
-                        // But check if WiFi is still connected
                         if (wifiConnected) {
                             runOnUiThread {
-                                // Simple connectivity check - if we can't listen, probably disconnected
                                 wifiConnected = false
                                 updateConnectionStatus()
-                                updateButtonLabels()
                                 addDebugLog("WiFi alert listener failed - connection lost")
                             }
-                            break // Exit listener
+                            break
                         }
                     }
                 }
@@ -1071,7 +1136,6 @@ class MainActivity : Activity() {
                     if (wifiConnected) {
                         wifiConnected = false
                         updateConnectionStatus()
-                        updateButtonLabels()
                         addDebugLog("WiFi listener startup failed - connection lost")
                     }
                 }
@@ -1177,8 +1241,8 @@ class MainActivity : Activity() {
             }
 
             addDebugLog("Bluetooth system ready")
-            updateStatus("Ready to start tracking")
-            startButton?.isEnabled = true
+            updateStatus("Ready - please connect to start tracking")
+            updateButtonStates()
         } else {
             addDebugLog("BLE scan permission required")
             updateStatus("BLE permissions needed")
@@ -1207,35 +1271,43 @@ class MainActivity : Activity() {
             return
         }
 
+        if (!hasAnyConnection()) {
+            showToast("No connection available - please connect first")
+            return
+        }
+
         isTrackingEnabled = true
         savePreferences()
         updateTrackingUI()
 
-        startButton?.isEnabled = false
-        stopButton?.isEnabled = true
-
         addDebugLog("=== TRACKING STARTED ===")
-        startBLEScan()
+
+        // Always try BLE first, then fall back to WiFi
+        if (!bleConnected) {
+            startBLEScan()
+        }
 
         handler.postDelayed({
-            if (bleConnected) {
-                // Send tracking and threshold initialization
-                sendBLECommand("START_TRACKING")
-                sendBLECommand("INIT_THRESHOLD;$rssiThreshold")
-
-                addDebugLog("Tracking commands sent via BLE")
-
-                handler.postDelayed({
-                    syncAlarmStatus()
-                }, 1000)
-            } else if (wifiConnected) {
-                // Send via WiFi if BLE not available
-                sendUDPCommand("START_TRACKING")
-                sendUDPCommand("INIT_THRESHOLD;$rssiThreshold")
-
-                addDebugLog("Tracking commands sent via WiFi")
-            }
+            syncTrackingState()
         }, 2000)
+    }
+
+    private fun syncTrackingState() {
+        // Send tracking commands via available connections
+        if (bleConnected) {
+            sendBLECommand("START_TRACKING")
+            sendBLECommand("INIT_THRESHOLD;$rssiThreshold")
+            addDebugLog("Tracking commands sent via BLE")
+        } else if (wifiConnected) {
+            sendUDPCommand("START_TRACKING")
+            sendUDPCommand("INIT_THRESHOLD;$rssiThreshold")
+            addDebugLog("Tracking commands sent via WiFi")
+        }
+
+        // Sync alarm status after tracking
+        handler.postDelayed({
+            syncAlarmStatus()
+        }, 1000)
     }
 
     private fun stopTracking() {
@@ -1255,29 +1327,17 @@ class MainActivity : Activity() {
             sendUDPCommand("STOP_TRACKING")
         }
 
-        startButton?.isEnabled = true
-        stopButton?.isEnabled = false
-        silenceButton?.isEnabled = isAlarmEnabled
-        rssiTestButton?.isEnabled = bleConnected
-        setThresholdButton?.isEnabled = false
         isAlarmActive = false
-
         updateAlarmUI()
         updateRssiDisplay()
         updateConnectionStatus()
         updateStatus("Tracking stopped")
-        showToast("Tracking stopped - BLE connection maintained")
+        showToast("Tracking stopped - connections maintained")
     }
 
     private fun resetUIState() {
         bleConnected = false
         currentRssi = 0
-
-        startButton?.isEnabled = true
-        stopButton?.isEnabled = false
-        silenceButton?.isEnabled = isAlarmEnabled
-        rssiTestButton?.isEnabled = false
-        setThresholdButton?.isEnabled = false
         isAlarmActive = false
 
         updateAlarmUI()
@@ -1337,17 +1397,12 @@ class MainActivity : Activity() {
             addDebugLog("BLE scan started - looking for ESP32_TRACKER")
 
             handler.postDelayed({
-                if (isScanning && !bleConnected) {  // Only show error if actually not connected
+                if (isScanning && !bleConnected) {
                     stopBLEScan()
                     updateStatus("ESP32_TRACKER not found")
                     addDebugLog("ESP32_TRACKER not found - scan timeout")
                     showToast("ESP32_TRACKER not found - check if device is powered on")
-
-                    if (!isTrackingEnabled) {
-                        resetUIState()
-                    }
                 } else if (isScanning && bleConnected) {
-                    // Connected during scan - just stop scanning
                     stopBLEScan()
                     addDebugLog("BLE scan stopped - already connected")
                 }
@@ -1357,9 +1412,6 @@ class MainActivity : Activity() {
             addDebugLog("BLE scan permission denied")
             updateStatus("Permission denied")
             isScanning = false
-            if (!isTrackingEnabled) {
-                resetUIState()
-            }
         }
     }
 
@@ -1430,9 +1482,6 @@ class MainActivity : Activity() {
             addDebugLog("BLE scan failed: $errorMessage")
             updateStatus("Scan failed")
             showToast("BLE scan failed: $errorMessage")
-            if (!isTrackingEnabled) {
-                resetUIState()
-            }
         }
     }
 
@@ -1464,7 +1513,6 @@ class MainActivity : Activity() {
                         updateStatus("Connected to ESP32_TRACKER!")
                         updateConnectionStatus()
                         addDebugLog("BLE connection established")
-                        rssiTestButton?.isEnabled = true
                         showNotification("Tracker Connected", "ESP32_TRACKER is now connected")
                         showToast("Connected to ESP32_TRACKER!")
                     }
@@ -1490,13 +1538,12 @@ class MainActivity : Activity() {
                     runOnUiThread {
                         updateStatus("Disconnected from ESP32_TRACKER")
                         updateConnectionStatus()
-                        updateRssiDisplay()  // Update to show no signal
+                        updateRssiDisplay()
                         addDebugLog("BLE connection lost")
 
                         if (isRssiTestActive) {
                             stopRssiTest()
                         }
-                        rssiTestButton?.isEnabled = false
 
                         if (isTrackingEnabled) {
                             addDebugLog("Auto-reconnection starting in 3 seconds...")
@@ -1511,7 +1558,6 @@ class MainActivity : Activity() {
                             addDebugLog("Not tracking - no auto-reconnect")
                         }
 
-                        // ALWAYS send disconnect notification when BLE drops
                         if (wasConnected) {
                             if (isTrackingEnabled) {
                                 handleTrackerAlert("Connection Lost", "ESP32_TRACKER disconnected - possible theft!")
@@ -1521,7 +1567,6 @@ class MainActivity : Activity() {
                                     updateAlarmUI()
                                 }
                             } else {
-                                // Send notification even when not tracking
                                 handleTrackerAlert("BLE Disconnected", "ESP32_TRACKER connection lost")
                             }
                         }
@@ -1605,9 +1650,10 @@ class MainActivity : Activity() {
                 }
 
                 handler.postDelayed({
-                    // ALWAYS sync both threshold and tracking state on EVERY connection
+                    // Always sync threshold first
                     sendBLECommand("INIT_THRESHOLD;$rssiThreshold")
 
+                    // Sync tracking state
                     if (isTrackingEnabled) {
                         sendBLECommand("START_TRACKING")
                         addDebugLog("BLE sync: Tracking ENABLED")
@@ -1658,7 +1704,6 @@ class MainActivity : Activity() {
     }
 
     private fun startPeriodicRSSIReading(gatt: BluetoothGatt) {
-        // Always read RSSI when BLE is connected, regardless of tracking state
         if (!bleConnected) {
             return
         }
@@ -1676,15 +1721,24 @@ class MainActivity : Activity() {
             }
         }
 
-        // Continue reading while BLE is connected
         if (bleConnected) {
             handler.postDelayed({
                 startPeriodicRSSIReading(gatt)
-            }, 5000) // Every 5 seconds
+            }, 5000)
         }
     }
 
+    // Variables for handling multi-part BLE messages
+    private val bleMessageParts = mutableMapOf<String, StringBuilder>()
+    private val expectedParts = mutableMapOf<String, Int>()
+
     private fun processESP32Message(message: String) {
+        // Handle multi-part messages from BLE
+        if (message.startsWith("PART:")) {
+            handleBLEMultiPartMessage(message)
+            return
+        }
+
         val shouldLog = when {
             message.startsWith("ALERT") -> true
             message.startsWith("ALARM_STATUS") -> true
@@ -1788,21 +1842,7 @@ class MainActivity : Activity() {
                 }
             }
             message.startsWith("GPS_DATA") -> {
-                val parts = message.split(";")
-                if (parts.size > 1) {
-                    if (parts[1] == "NO_FIX") {
-                        updateGpsStatus("GPS: No fix available")
-                        showToast("📍 GPS: No satellite fix")
-                    } else {
-                        val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(message)
-                        if (locationMatch != null) {
-                            val lat = locationMatch.groupValues[1]
-                            val lon = locationMatch.groupValues[2]
-                            updateGpsStatus("GPS: $lat, $lon")
-                            showToast("📍 GPS location received")
-                        }
-                    }
-                }
+                processGPSData(message, "BLE")
             }
             message.startsWith("PONG") || message.startsWith("LOCATION") -> {
                 updateStatus("Location data received")
@@ -1810,9 +1850,7 @@ class MainActivity : Activity() {
                 if (locationMatch != null) {
                     val lat = locationMatch.groupValues[1]
                     val lon = locationMatch.groupValues[2]
-                    updateGpsStatus("GPS: $lat, $lon")
-                    addDebugLog("GPS coordinates: $lat, $lon")
-                    showToast("📍 GPS location received")
+                    processGPSData("GPS_DATA;LAT=$lat;LON=$lon", "BLE")
                 } else {
                     updateGpsStatus("GPS: Data received")
                 }
@@ -1845,7 +1883,200 @@ class MainActivity : Activity() {
             }
             else -> {
                 updateStatus("ESP32: $message")
-                showNotification("ESP32 Message", message)
+                if (shouldLog) {
+                    showNotification("ESP32 Message", message)
+                }
+            }
+        }
+
+        processCompleteESP32Message(message)
+    }
+
+    private fun handleBLEMultiPartMessage(message: String) {
+        // Parse PART:1/3:actual_message format
+        val partRegex = Regex("""PART:(\d+)/(\d+):(.*)""")
+        val match = partRegex.find(message)
+
+        if (match != null) {
+            val currentPart = match.groupValues[1].toInt()
+            val totalParts = match.groupValues[2].toInt()
+            val content = match.groupValues[3]
+
+            val messageId = "ble_msg" // Could be more sophisticated
+
+            // Initialize if first part
+            if (currentPart == 1) {
+                bleMessageParts[messageId] = StringBuilder()
+                expectedParts[messageId] = totalParts
+                addDebugLog("BLE multi-part message started (1/$totalParts)")
+            }
+
+            // Append content
+            bleMessageParts[messageId]?.append(content)
+            addDebugLog("BLE part received ($currentPart/$totalParts)")
+
+            // Check if complete
+            if (currentPart == totalParts) {
+                val completeMessage = bleMessageParts[messageId]?.toString() ?: ""
+                bleMessageParts.remove(messageId)
+                expectedParts.remove(messageId)
+
+                addDebugLog("BLE multi-part message complete: $completeMessage")
+                processCompleteESP32Message(completeMessage)
+            }
+        } else {
+            addDebugLog("Invalid BLE multi-part format: $message")
+        }
+    }
+
+    private fun processCompleteESP32Message(message: String) {
+        val shouldLog = when {
+            message.startsWith("ALERT") -> true
+            message.startsWith("ALARM_STATUS") -> true
+            message.startsWith("ALARM_SILENCED") -> true
+            message.startsWith("THRESHOLD_INITIALIZED") -> true
+            message.startsWith("THRESHOLD_SET") -> true
+            message.startsWith("TRACKING_STATUS") -> true
+            message.startsWith("GPS_DATA") -> true
+            message.startsWith("PONG") -> true
+            message.startsWith("LOCATION") -> true
+            message.startsWith("GSM_STATUS") -> true
+            message.startsWith("RSSI_TEST_") -> true
+            message.startsWith("SMS_SENT") -> true
+            message.startsWith("SMS_FAILED") -> true
+            else -> false
+        }
+
+        if (shouldLog) {
+            addDebugLog("ESP32 ← $message")
+        }
+
+        when {
+            message.startsWith("ALERT") -> {
+                handleTrackerAlert("ESP32 Alert", message)
+            }
+            message.startsWith("ALARM_STATUS") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    val status = parts[1]
+                    val enabled = status == "ENABLED"
+
+                    if (isAlarmEnabled != enabled) {
+                        isAlarmEnabled = enabled
+                        savePreferences()
+                        updateAlarmUI()
+                        addDebugLog("Alarm status synced: $status")
+                    }
+
+                    updateStatus("ESP32 Alarm: $status")
+                }
+            }
+            message.startsWith("TRACKING_STATUS") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    val status = parts[1]
+                    val enabled = status == "ENABLED"
+
+                    if (isTrackingEnabled != enabled) {
+                        isTrackingEnabled = enabled
+                        savePreferences()
+                        updateTrackingUI()
+                        addDebugLog("Tracking status synced: $status")
+                    }
+
+                    updateStatus("ESP32 Tracking: $status")
+                }
+            }
+            message.startsWith("THRESHOLD_INITIALIZED") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    try {
+                        val confirmedThreshold = parts[1].toInt()
+                        addDebugLog("ESP32 confirmed initial threshold: $confirmedThreshold dBm")
+                        showToast("✅ Distance threshold synchronized: $confirmedThreshold dBm")
+                        updateRssiDisplay()
+                    } catch (e: NumberFormatException) {
+                        addDebugLog("Invalid threshold confirmation from ESP32")
+                    }
+                }
+            }
+            message.startsWith("ALARM_SILENCED") -> {
+                val parts = message.split(";")
+                val duration = if (parts.size > 1) parts[1] else "UNKNOWN"
+
+                isAlarmActive = false
+                updateAlarmUI()
+                updateStatus("Alarm silenced by ESP32 for $duration")
+                addDebugLog("ESP32 confirmed alarm silenced for $duration")
+                showToast("✅ Alarm silenced for $duration")
+            }
+            message.startsWith("THRESHOLD_SET") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    try {
+                        val newThreshold = parts[1].toInt()
+                        if (rssiThreshold != newThreshold) {
+                            rssiThreshold = newThreshold
+                            savePreferences()
+                            updateRssiDisplay()
+
+                            val thresholdIndex = thresholdOptions.indexOf(rssiThreshold)
+                            if (thresholdIndex >= 0) {
+                                thresholdSpinner?.setSelection(thresholdIndex)
+                            }
+                        }
+                        addDebugLog("Distance threshold confirmed: $newThreshold dBm")
+                        showToast("Distance threshold confirmed: $newThreshold dBm")
+                    } catch (e: NumberFormatException) {
+                        addDebugLog("Invalid threshold format from ESP32")
+                    }
+                }
+            }
+            message.startsWith("GPS_DATA") -> {
+                processGPSData(message, "BLE")
+            }
+            message.startsWith("PONG") || message.startsWith("LOCATION") -> {
+                updateStatus("Location data received")
+                val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(message)
+                if (locationMatch != null) {
+                    val lat = locationMatch.groupValues[1]
+                    val lon = locationMatch.groupValues[2]
+                    processGPSData("GPS_DATA;LAT=$lat;LON=$lon", "BLE")
+                } else {
+                    updateGpsStatus("GPS: Data received")
+                }
+            }
+            message.startsWith("GSM_STATUS") -> {
+                val parts = message.split(";")
+                if (parts.size > 1) {
+                    val status = parts[1]
+                    gsmConnected = status == "CONNECTED"
+                    updateConnectionStatus()
+                    addDebugLog("GSM network: $status")
+                }
+            }
+            message.startsWith("RSSI_TEST_") -> {
+                if (message == "RSSI_TEST_STARTED") {
+                    addDebugLog("ESP32 distance test started")
+                    showToast("Distance test started on ESP32")
+                } else if (message == "RSSI_TEST_STOPPED") {
+                    addDebugLog("ESP32 distance test stopped")
+                    showToast("Distance test stopped on ESP32")
+                }
+            }
+            message.startsWith("SMS_SENT") -> {
+                addDebugLog("SMS sent confirmation from ESP32")
+                showToast("📱 SMS sent successfully!")
+            }
+            message.startsWith("SMS_FAILED") -> {
+                addDebugLog("SMS failed confirmation from ESP32")
+                showToast("❌ SMS sending failed")
+            }
+            else -> {
+                updateStatus("ESP32: $message")
+                if (shouldLog) {
+                    showNotification("ESP32 Message", message)
+                }
             }
         }
     }
@@ -1966,12 +2197,11 @@ class MainActivity : Activity() {
         updateConnectionStatus()
         checkSystemConnections()
 
+        // Always sync state when resuming
         handler.postDelayed({
             if (bleConnected) {
-                // Send current threshold
                 sendBLECommand("INIT_THRESHOLD;$rssiThreshold")
 
-                // Send current tracking state
                 if (isTrackingEnabled) {
                     sendBLECommand("START_TRACKING")
                     addDebugLog("Resume: Tracking state synced (ENABLED)")

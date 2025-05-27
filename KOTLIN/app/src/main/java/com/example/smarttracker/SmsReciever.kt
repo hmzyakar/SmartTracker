@@ -17,7 +17,7 @@ class SmsReceiver : BroadcastReceiver() {
         private const val TAG = "SmsReceiver"
         var callback: ((String, String) -> Unit)? = null
 
-        // DÜZELTME: Gerçek tracker mesaj anahtar kelimeleri
+        // Enhanced tracker message keywords
         private val TRACKER_KEYWORDS = listOf(
             "SMART TRACKER ALERT",
             "ESP32_TRACKER",
@@ -35,28 +35,36 @@ class SmsReceiver : BroadcastReceiver() {
             "Distance alert",
             "ALERT:",
             "Location:",
-            "maps.google.com"
+            "maps.google.com",
+            "SmartTracker STATUS",
+            "SmartTracker ALERT"
         )
 
-        // SMS command processing - DÜZELTME: Production komutları
+        // Enhanced SMS commands
         private val SMS_COMMANDS = mapOf(
             "ALARM ON" to "ALARM_ON",
             "ALARM OFF" to "ALARM_OFF",
             "SILENCE" to "SILENCE_ALARM",
             "STATUS" to "GET_STATUS",
-            "LOCATION" to "GET_LOCATION",
-            "GPS" to "GET_GPS_STATUS",
+            "LOCATION" to "REQUEST_GPS",
+            "GPS" to "REQUEST_GPS",
+            "WHERE" to "REQUEST_GPS",
+            "FIND" to "REQUEST_GPS",
             "GSM" to "GET_GSM_STATUS",
             "PING" to "PING_TEST",
-            "WHERE" to "GET_LOCATION",
-            "FIND" to "GET_LOCATION"
+            "START" to "START_TRACKING",
+            "STOP" to "STOP_TRACKING",
+            "HELP" to "HELP"
         )
 
-        // DÜZELTME: Gerçek telefon numaraları
+        // Authorized phone numbers
         private val AUTHORIZED_NUMBERS = listOf(
-            "+905447661357",
+            "+905447661357",  // Sizin numaranız (komut gönderme için)
             "5447661357",
-            "905447661357"
+            "905447661357",
+            "+905063510837",  // ESP32'nin numarası (cevap alma için)
+            "5063510837",
+            "905063510837"
         )
     }
 
@@ -138,7 +146,7 @@ class SmsReceiver : BroadcastReceiver() {
     private fun isCommand(messageBody: String): Boolean {
         val normalizedMessage = messageBody.trim().uppercase()
         return SMS_COMMANDS.keys.any { command ->
-            normalizedMessage.startsWith(command)
+            normalizedMessage.startsWith(command) || normalizedMessage == command
         }
     }
 
@@ -158,7 +166,7 @@ class SmsReceiver : BroadcastReceiver() {
         var esp32Command = ""
 
         // Find matching command
-        SMS_COMMANDS.entries.find { normalizedCommand.startsWith(it.key) }?.let { entry ->
+        SMS_COMMANDS.entries.find { normalizedCommand.startsWith(it.key) || normalizedCommand == it.key }?.let { entry ->
             esp32Command = entry.value
 
             responseMessage = when (entry.key) {
@@ -172,38 +180,63 @@ class SmsReceiver : BroadcastReceiver() {
                 }
                 "SILENCE" -> {
                     callback?.invoke("SMS Command", "Alarm SILENCED via SMS from $phoneNumber")
-                    "🔇 ALARM SILENCED\nBuzzer stopped remotely."
+                    "🔇 ALARM SILENCED\nBuzzer stopped remotely for 5 minutes."
                 }
-                "STATUS", "WHERE", "LOCATION", "FIND" -> {
-                    callback?.invoke("SMS Command", "Location requested via SMS from $phoneNumber")
-                    "📍 LOCATION REQUEST SENT\nWaiting for GPS coordinates..."
+                "STATUS" -> {
+                    callback?.invoke("SMS Command", "System status requested via SMS from $phoneNumber")
+                    "📊 STATUS REQUEST SENT\nChecking all systems..."
                 }
-                "GPS" -> {
-                    callback?.invoke("SMS Command", "GPS status requested via SMS")
-                    "🛰️ GPS STATUS REQUEST SENT\nChecking satellite connection..."
+                "LOCATION", "GPS", "WHERE", "FIND" -> {
+                    callback?.invoke("SMS Command", "GPS location requested via SMS from $phoneNumber")
+                    "📍 GPS LOCATION REQUEST SENT\nWaiting for coordinates..."
                 }
                 "GSM" -> {
                     callback?.invoke("SMS Command", "GSM status requested via SMS")
                     "📶 GSM STATUS REQUEST SENT\nChecking network connection..."
                 }
+                "START" -> {
+                    callback?.invoke("SMS Command", "Tracking started via SMS")
+                    "▶️ TRACKING STARTED\nDistance monitoring enabled."
+                }
+                "STOP" -> {
+                    callback?.invoke("SMS Command", "Tracking stopped via SMS")
+                    "⏹️ TRACKING STOPPED\nDistance monitoring disabled."
+                }
                 "PING" -> {
                     callback?.invoke("SMS Command", "System test via SMS")
                     "🔄 SYSTEM TEST INITIATED\nTesting all connections..."
+                }
+                "HELP" -> {
+                    callback?.invoke("SMS Command", "Help requested via SMS")
+                    """
+                    📋 SMARTTRACKER COMMANDS:
+                    
+                    ALARM ON/OFF - Enable/disable alerts
+                    SILENCE - Stop current alarm
+                    LOCATION - Get GPS coordinates  
+                    STATUS - System status
+                    START/STOP - Begin/end tracking
+                    GSM - Network status
+                    PING - Test system
+                    
+                    Reply with any command.
+                    """.trimIndent()
                 }
                 else -> "✅ Command processed"
             }
         } ?: run {
             responseMessage = """
-                ❌ Unknown command.
+                ❌ Unknown command: "$normalizedCommand"
                 
                 📋 Valid commands:
                 • ALARM ON/OFF - Enable/disable alerts
                 • SILENCE - Stop current alarm
                 • LOCATION - Get GPS coordinates  
                 • STATUS - System status
-                • GPS - Satellite status
+                • START/STOP - Begin/end tracking
                 • GSM - Network status
                 • PING - Test system
+                • HELP - Show this help
                 
                 Smart Tracker v2.0
             """.trimIndent()
@@ -224,7 +257,7 @@ class SmsReceiver : BroadcastReceiver() {
         Thread {
             try {
                 val socket = DatagramSocket()
-                socket.soTimeout = 8000 // 8 second timeout
+                socket.soTimeout = 8000
 
                 val address = InetAddress.getByName("192.168.4.1") // ESP32 AP IP
                 val buffer = command.toByteArray()
@@ -240,6 +273,11 @@ class SmsReceiver : BroadcastReceiver() {
                     socket.receive(responsePacket)
                     val response = String(responsePacket.data, 0, responsePacket.length)
                     Log.d(TAG, "ESP32 response: $response")
+
+                    // Handle GPS response specifically
+                    if (command == "REQUEST_GPS" && response.startsWith("GPS_DATA;")) {
+                        handleGPSResponse(response)
+                    }
                 } catch (e: Exception) {
                     Log.d(TAG, "UDP command sent to ESP32, no response received")
                 }
@@ -251,6 +289,59 @@ class SmsReceiver : BroadcastReceiver() {
                 Log.e(TAG, "Error sending UDP command to ESP32: ${e.message}")
             }
         }.start()
+    }
+
+    private fun handleGPSResponse(gpsData: String) {
+        // Parse GPS response and send formatted SMS
+        val parts = gpsData.split(";")
+        if (parts.size > 1) {
+            if (parts[1] == "NO_FIX") {
+                // Send "no GPS" SMS response
+                Thread {
+                    sendGPSResponseSMS("📍 GPS STATUS: No satellite fix available.\n\nThe tracker cannot determine location at this time. Please try again later or move to an area with better sky visibility.")
+                }.start()
+            } else {
+                // Extract coordinates and send location SMS
+                val locationMatch = Regex("""LAT=([\d.-]+);LON=([\d.-]+)""").find(gpsData)
+                if (locationMatch != null) {
+                    val lat = locationMatch.groupValues[1]
+                    val lon = locationMatch.groupValues[2]
+
+                    Thread {
+                        val locationMessage = """
+                            📍 TRACKER LOCATION:
+                            
+                            Coordinates: $lat, $lon
+                            
+                            🗺️ View on map:
+                            https://maps.google.com/?q=$lat,$lon
+                            
+                            ⏰ ${java.text.SimpleDateFormat("HH:mm:ss dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date())}
+                        """.trimIndent()
+
+                        sendGPSResponseSMS(locationMessage)
+                    }.start()
+                }
+            }
+        }
+    }
+
+    private fun sendGPSResponseSMS(message: String) {
+        try {
+            val smsManager = SmsManager.getDefault()
+            val phoneNumber = "+905447661357" // Send to authorized number
+
+            val parts = smsManager.divideMessage(message)
+            if (parts.size == 1) {
+                smsManager.sendTextMessage(phoneNumber, null, parts[0], null, null)
+            } else {
+                smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null)
+            }
+
+            Log.d(TAG, "GPS response SMS sent to $phoneNumber")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending GPS response SMS: ${e.message}")
+        }
     }
 
     private fun sendResponseSMS(phoneNumber: String, message: String) {
@@ -308,6 +399,11 @@ class SmsReceiver : BroadcastReceiver() {
                 val location = extractLocation(originalMessage)
                 val mapsLink = extractGoogleMapsLink(originalMessage)
                 "📏 DISTANCE ALERT: Item moved beyond safe range!\n\n$location\n\n$mapsLink"
+            }
+            originalMessage.contains("SmartTracker STATUS", ignoreCase = true) -> {
+                val location = extractLocation(originalMessage)
+                val mapsLink = extractGoogleMapsLink(originalMessage)
+                "📊 STATUS UPDATE: Your item is safe\n\n$location\n\n$mapsLink"
             }
             else -> {
                 val location = extractLocation(originalMessage)

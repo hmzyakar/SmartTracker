@@ -83,7 +83,7 @@
                     android:textColor="@color/red_500"
                     android:layout_marginBottom="8dp" />
 
-                <!-- Quick Retry Buttons -->
+                <!-- Connection Buttons -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -94,7 +94,7 @@
                         android:layout_width="0dp"
                         android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="RETRY BLE"
+                        android:text="CONNECT BLE"
                         android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
@@ -106,7 +106,7 @@
                         android:layout_width="0dp"
                         android:layout_height="48dp"
                         android:layout_weight="1"
-                        android:text="TEST WiFi"
+                        android:text="CONNECT WiFi"
                         android:textSize="10sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
@@ -358,18 +358,41 @@
                     android:text="GPS: Not available"
                     android:textSize="14sp"
                     android:textColor="@color/gray_500"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="8dp"
+                    android:autoLink="web"
+                    android:linksClickable="true" />
 
-                <Button
-                    android:id="@+id/requestGpsButton"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:text="REQUEST GPS LOCATION"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/white"
-                    android:background="@color/blue_600"
-                    android:enabled="false" />
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/requestGpsButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="REQUEST GPS LOCATION"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@color/blue_600"
+                        android:layout_marginEnd="4dp"
+                        android:enabled="false" />
+
+                    <Button
+                        android:id="@+id/requestGpsSmsButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="REQUEST VIA SMS"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@color/red_600"
+                        android:layout_marginStart="4dp" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
@@ -517,7 +540,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="1. START TRACKING - Begin monitoring device distance\n2. Set alert distance using dropdown or distance test\n3. SILENCE ALARM - Stop buzzer for 5 minutes\n4. REQUEST GPS - Get current location\n5. Alarm controls buzzer only\n6. Notifications sent when tracking is active"
+                    android:text="1. CONNECT - First establish BLE or WiFi connection\n2. START TRACKING - Begin monitoring device distance\n3. Set alert distance using dropdown or distance test\n4. SILENCE ALARM - Stop buzzer for 5 minutes\n5. REQUEST GPS - Get current location via connection\n6. REQUEST VIA SMS - Get location independent of connections\n7. Alarm controls buzzer, tracking sends notifications"
                     android:textSize="13sp"
                     android:textColor="@color/gray_700"
                     android:lineSpacingExtra="2dp" />
